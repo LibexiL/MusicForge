@@ -1,0 +1,107 @@
+{
+  "name": "musicforge",
+  "productName": "MusicForge",
+  "version": "0.1.0",
+  "description": "One player for Spotify, YouTube, SoundCloud, Deezer, Apple Music, Last.fm and your local files — with live lyrics, visualizers, videos and artist stats.",
+  "main": "src/main/main.mjs",
+  "desktopName": "musicforge.desktop",
+  "homepage": "https://github.com/LibexiL/MusicForge",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LibexiL/MusicForge.git"
+  },
+  "author": {
+    "name": "LibexiL",
+    "email": "LibexiL@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "music-metadata": "^12.3.2"
+  },
+  "devDependencies": {
+    "electron": "^44.9.3",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "io.github.libexil.musicforge",
+    "productName": "MusicForge",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "compression": "normal",
+    "electronLanguages": [
+      "en-US"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "shortcutName": "MusicForge"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "AudioVideo",
+      "synopsis": "All your music services in one player",
+      "maintainer": "LibexiL <LibexiL@users.noreply.github.com>",
+      "executableName": "musicforge",
+      "target": [
+        "AppImage",
+        "rpm",
+        "deb"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "MusicForge",
+          "Comment": "All your music services in one player",
+          "Keywords": "music;player;spotify;youtube;lyrics;visualizer;",
+          "StartupWMClass": "MusicForge"
+        }
+      }
+    },
+    "rpm": {
+      "depends": [
+        "libnotify",
+        "libXScrnSaver",
+        "libsecret"
+      ]
+    },
+    "publish": null
+  }
+}

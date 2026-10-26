@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>MusicForge</title>
+  <link rel="preload" href="fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="titlebar" id="titlebar">
+      <div class="brand">
+        <img src="img/icon.png" alt="" width="20" height="20">
+        <span>MusicForge</span>
+      </div>
+      <div class="nav-arrows">
+        <button class="icon-btn" id="nav-back" title="Back (Alt+Left)" aria-label="Back"></button>
+        <button class="icon-btn" id="nav-fwd" title="Forward (Alt+Right)" aria-label="Forward"></button>
+      </div>
+      <label class="search-box" id="search-box">
+        <span class="search-icon" aria-hidden="true"></span>
+        <input id="search-input" type="search" placeholder="Search songs, artists, videos — or paste a link" autocomplete="off" spellcheck="false">
+        <kbd>Ctrl K</kbd>
+      </label>
+    </header>
+
+    <nav class="sidebar" id="sidebar" aria-label="Main">
+      <ul class="nav" id="nav"></ul>
+      <div class="sidebar-section">
+        <div class="sidebar-head">
+          <span>Playlists</span>
+          <button class="icon-btn small" id="new-playlist" title="New playlist" aria-label="New playlist"></button>
+        </div>
+        <ul class="playlist-nav" id="playlist-nav"></ul>
+      </div>
+      <ul class="nav nav-bottom" id="nav-bottom"></ul>
+    </nav>
+
+    <main class="main" id="main" tabindex="-1"></main>
+
+    <aside class="panel" id="panel" hidden></aside>
+
+    <footer class="playerbar" id="playerbar"></footer>
+  </div>
+
+  <!-- Embedded players live here and are positioned over whichever view shows them,
+       so they never reload when you switch screens. -->
+  <div id="embed-host" class="embed-host" data-mode="off">
+    <div id="yt-slot"><div id="yt-player"></div></div>
+    <div id="sc-slot"></div>
+    <div class="embed-bar"><span id="embed-label"></span><button class="icon-btn small" id="embed-expand" title="Open now playing"></button></div>
+  </div>
+
+  <div id="menu-root"></div>
+  <div id="toast-root" class="toasts" aria-live="polite"></div>
+  <dialog id="modal" class="modal"></dialog>
+</body>
+</html>
