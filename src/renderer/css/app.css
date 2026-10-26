@@ -689,6 +689,34 @@ textarea.input { height: 80px; padding: 8px 11px; resize: vertical; font-family:
 .pal-preview > div { flex: 1; }
 input[type='range'].range { width: 100%; accent-color: var(--accent); }
 
+/* guided setup */
+.guide { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.g-step { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid rgb(47 53 64 / .55); }
+.g-step:last-child { border-bottom: 0; }
+.g-n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--raise-2); color: var(--text); font-size: 12.5px; font-weight: 700; margin-top: -2px; }
+.g-t { font-weight: 640; font-size: 14px; }
+.g-d { color: var(--muted); font-size: 13px; line-height: 1.55; margin-top: 2px; overflow-wrap: anywhere; }
+.g-d code.inline { margin-right: 4px; }
+.g-act { display: flex; gap: 6px; align-self: center; }
+.g-act .btn .ic { margin-left: 2px; opacity: .8; }
+.g-form { display: grid; gap: 12px; padding: 4px 0 4px 42px; max-width: 700px; }
+.key-row { display: flex; gap: 8px; }
+.key-row .input { flex: 1; min-width: 0; font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace; font-size: 13px; }
+.g-result { text-align: left; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.45; flex-wrap: wrap; }
+.g-result > span:not(.g-spin) { flex: 1; min-width: 200px; }
+.g-result.ok { background: rgb(134 195 154 / .12); color: #b9e2c5; }
+.g-result.err { background: rgb(229 103 90 / .12); color: #f2b3ab; }
+.g-result.wait { background: var(--raise); color: var(--text); }
+.g-result .ic { flex: none; }
+.g-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--seam); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
+.g-more { margin-top: 6px; border-top: 1px solid var(--seam); padding-top: 12px; }
+.g-more summary { cursor: pointer; font-weight: 620; color: var(--muted); padding: 6px 0; }
+.g-more summary:hover { color: var(--text); }
+.g-more[open] summary { color: var(--text); margin-bottom: 4px; }
+.g-client { font-size: 13px; }
+.g-manage { padding-left: 42px; }
+.svc-setup .note { padding-left: 42px; max-width: 742px; }
+
 /* ------------------------------------------------------------------ menus, modals, toasts */
 .menu {
   position: fixed;

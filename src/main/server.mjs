@@ -184,7 +184,15 @@ export function startServer({ port, root, token, library }) {
         const actual = server.address().port;
         origin = `http://127.0.0.1:${actual}`;
         if (actual !== port) console.warn(`[server] port ${port} busy, using ${actual}. Spotify sign-in needs ${port}.`);
-        resolve({ origin, port: actual, waitForCallback, close: () => server.close() });
+        const cancel = (provider) => {
+          const entry = pending.get(provider);
+          if (!entry) return false;
+          pending.delete(provider);
+          clearTimeout(entry.timer);
+          entry.reject(new Error('Sign-in cancelled'));
+          return true;
+        };
+        resolve({ origin, port: actual, waitForCallback, cancel, close: () => server.close() });
       });
     };
     tryListen(port, true);

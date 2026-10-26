@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, session, desktopCapturer, Tray, Menu, nativeImage, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, session, desktopCapturer, Tray, Menu, nativeImage, globalShortcut, clipboard } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -191,6 +191,19 @@ function boot() {
       throw new Error('Not available');
     });
     handle('auth:appleUserToken', (token) => auth.setAppleUserToken(token));
+    handle('auth:cancel', (service) => server.cancel(service === 'youtube' ? 'google' : service));
+    // Google's "Download JSON" for a Desktop OAuth client → client ID + secret, no copying by hand.
+    handle('auth:googleClientFile', async () => {
+      const r = await dialog.showOpenDialog(win, {
+        title: 'Choose the client file you downloaded from Google',
+        defaultPath: app.getPath('downloads'),
+        properties: ['openFile'],
+        filters: [{ name: 'Google client file', extensions: ['json'] }],
+      });
+      if (r.canceled || !r.filePaths[0]) return null;
+      return fs.promises.readFile(r.filePaths[0], 'utf8');
+    });
+    handle('clipboard:read', async () => String((await clipboard.readText()) ?? '').slice(0, 20000));
 
     handle('api:request', (req) => api.request(req));
     handle('api:image', async (url) => {

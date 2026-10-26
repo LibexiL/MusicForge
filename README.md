@@ -38,7 +38,7 @@ Windows builds are unsigned, so SmartScreen may warn the first time: choose **Mo
 
 ## Linking services
 
-Open **Accounts** in the app; each service has step-by-step setup. Spotify and Google no longer hand out shared keys to small apps, so you make a free developer key once and paste it in. Keys and sign-ins are stored encrypted with your OS keychain (Windows DPAPI, KWallet or GNOME Keyring on Linux) and never leave your PC except to talk to that service.
+Open **Accounts** in the app. Each setup has a button for every page you need to visit, a Paste button for your key, and checks the key with the service immediately (it tells you exactly what to fix if something is off). For YouTube sign-in you just pick the JSON file Google lets you download; no copying IDs by hand. Spotify and Google no longer hand out shared keys to small apps, so you make a free developer key once and paste it in. Keys and sign-ins are stored encrypted with your OS keychain (Windows DPAPI, KWallet or GNOME Keyring on Linux) and never leave your PC except to talk to that service.
 
 | Service | What you need | What you get |
 |---|---|---|

@@ -6,6 +6,7 @@ const INVOKE = new Set([
   'win:overlay', 'win:fullscreen', 'win:tray', 'win:mediaKeys', 'win:progress',
   'store:load', 'store:set',
   'auth:status', 'auth:config', 'auth:connect', 'auth:disconnect', 'auth:token', 'auth:appleUserToken',
+  'auth:cancel', 'auth:googleClientFile', 'clipboard:read',
   'api:request', 'api:image',
   'library:get', 'library:scan', 'library:addFolder', 'library:removeFolder', 'library:lyrics', 'library:reveal',
   'shell:open', 'data:export', 'data:import',
