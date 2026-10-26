@@ -1,5 +1,5 @@
 import { h, icon, iconBtn, fmtTime, img, clear, throttle } from '../util.js';
-import { state, on, emit, isLiked, toggleLike, mf, slim } from '../state.js';
+import { state, on, emit, isLiked, toggleLike, mf, slim, save } from '../state.js';
 import { NAMES } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
@@ -319,4 +319,93 @@ export function trackList(tracks, opts = {}) {
     root.querySelector(`.tl-row[data-i="${selected}"]`)?.focus({ preventScroll: virtual });
   });
   return root;
+}
+
+// ---------------------------------------------------------------- song grid
+// Tiles render in batches as you scroll, so big libraries stay quick.
+export function trackGrid(tracks, opts = {}) {
+  const { context = null, onPlay, video = false, batch = 96 } = opts;
+  const scroller = opts.scroller || document.getElementById('main');
+  const grid = h('div', { class: `tiles song-grid ${video ? 'video' : ''}` });
+  const play = (i) => (onPlay ? onPlay(i) : engine.playList(tracks, i, context));
+  const tileFor = (t, i) => {
+    const cur = engine.track?.key === t.key;
+    const el = h('div', {
+      class: `tile song-tile ${cur ? 'current' : ''}`, tabindex: 0, role: 'button', dataset: { i }, title: `${t.title} — ${t.artist}`,
+      onclick: (e) => { if (!e.target.closest('.st-more')) play(i); },
+      onkeydown: (e) => { if (e.key === 'Enter') play(i); },
+      oncontextmenu: (e) => { e.preventDefault(); trackMenu(t, e, { list: tracks, index: i, context }); },
+      draggable: true,
+      ondragstart: (e) => {
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('application/x-mf-tracks', JSON.stringify([slim(t)]));
+        e.dataTransfer.setData('text/plain', t.url || `${t.artist} - ${t.title}`);
+        document.body.classList.add('dragging-tracks');
+      },
+      ondragend: () => document.body.classList.remove('dragging-tracks'),
+    },
+    h('div', { class: 'art' }, img(video ? (t.artLarge || t.art) : t.art, ''),
+      h('span', { class: 'tile-play', 'aria-hidden': 'true' }, icon(cur ? 'wave' : 'play', 18)),
+      h('button', { class: 'st-more', title: 'More', 'aria-label': `More for ${t.title}`, onclick: (e) => { e.stopPropagation(); trackMenu(t, e, { list: tracks, index: i, context }); } }, icon('more', 16)),
+      t.duration ? h('span', { class: 'st-dur' }, fmtTime(t.duration)) : null),
+    h('div', { class: 'nm' }, t.title),
+    h('div', { class: 'sub' }, h('span', { class: `src src-${t.origin}`, title: NAMES[t.origin] || t.origin }), t.artist));
+    return el;
+  };
+  let shown = 0;
+  const sentinel = h('div', { class: 'grid-sentinel' });
+  const more = () => {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(tracks.length, shown + batch);
+    for (let i = shown; i < end; i++) frag.append(tileFor(tracks[i], i));
+    shown = end;
+    grid.append(frag);
+    if (shown >= tracks.length) { io.disconnect(); sentinel.remove(); }
+  };
+  const io = new IntersectionObserver((e) => { if (e[0].isIntersecting) more(); }, { root: scroller, rootMargin: '600px' });
+  more();
+  const wrap = h('div', null, grid, shown < tracks.length ? sentinel : null);
+  if (shown < tracks.length) requestAnimationFrame(() => io.observe(sentinel));
+  const off = on('track', () => {
+    if (!wrap.isConnected) { off(); io.disconnect(); return; }
+    const key = engine.track?.key;
+    grid.querySelectorAll('.song-tile').forEach((el) => {
+      const isCur = tracks[+el.dataset.i]?.key === key;
+      if (isCur === el.classList.contains('current')) return;
+      el.classList.toggle('current', isCur);
+      el.querySelector('.tile-play').replaceChildren(icon(isCur ? 'wave' : 'play', 18));
+    });
+  });
+  wrap._cleanup = () => { io.disconnect(); off(); };
+  return wrap;
+}
+
+// Grid / list switch. The choice is remembered per screen ("search", "library", "playlist"…).
+export function viewMode(area, fallback = 'list') { return state.settings.views?.[area] || fallback; }
+export function viewToggle(area, fallback, onChange) {
+  const cur = viewMode(area, fallback);
+  const set = (mode) => {
+    state.settings.views = { ...(state.settings.views || {}), [area]: mode };
+    save('settings');
+    el.querySelectorAll('button').forEach((b) => { const on2 = b.dataset.mode === mode; b.classList.toggle('on', on2); b.setAttribute('aria-pressed', String(on2)); });
+    onChange(mode);
+  };
+  const el = h('div', { class: 'seg view-toggle', role: 'group', 'aria-label': 'Layout' },
+    h('button', { class: cur === 'grid' ? 'on' : '', dataset: { mode: 'grid' }, 'aria-pressed': String(cur === 'grid'), title: 'Grid', onclick: () => set('grid') }, icon('grid', 16)),
+    h('button', { class: cur === 'list' ? 'on' : '', dataset: { mode: 'list' }, 'aria-pressed': String(cur === 'list'), title: 'List', onclick: () => set('list') }, icon('lyrics', 16)));
+  return el;
+}
+
+// Renders songs as a grid or a list depending on the remembered mode for `area`.
+export function trackCollection(tracks, opts = {}, area = 'library', fallback = 'list') {
+  return viewMode(area, fallback) === 'grid' ? trackGrid(tracks, opts) : trackList(tracks, opts);
+}
+
+// Big "Top result" card for search.
+export function topCard({ image, round = false, name, meta, onOpen, onPlay }) {
+  return h('div', { class: 'top-card', tabindex: 0, role: 'button', onclick: onOpen, onkeydown: (e) => { if (e.key === 'Enter') onOpen?.(); } },
+    img(image, '', round ? 'round' : ''),
+    h('div', { class: 'tc-name' }, name),
+    h('div', { class: 'tc-meta' }, meta),
+    onPlay ? h('button', { class: 'tile-play tc-play', title: `Play ${name}`, 'aria-label': `Play ${name}`, onclick: (e) => { e.stopPropagation(); onPlay(); } }, icon('play', 20)) : null);
 }

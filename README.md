@@ -13,6 +13,7 @@
 - **Smart source picking.** Each song plays from the best source you have, in the order you choose (local file → Spotify → YouTube → SoundCloud → 30-second preview). If a Deezer chart song isn't playable, MusicForge finds the same song on Spotify or YouTube and remembers the match.
 - **Live synced lyrics** from LRCLIB, embedded tags or a `.lrc` file next to the song. The current line stays centred; unsynced lyrics scroll along with the song. Click a line to jump to it, nudge the timing with `[` and `]`, and pick a different match with **Wrong lyrics?**.
 - **Audio visualizer** in four styles (bars, mirror, wave, radial) with cava-style falling peaks, in "temper" colours that run from tempered-steel blue to straw as the music gets louder. Works with Spotify and YouTube too by listening to system audio.
+- **Grid search.** Top result, artists, songs, albums and playlists side by side; filter by type and source, and switch songs between grid and list (also in Library, Liked and playlists).
 - **Music videos.** Switch any song to its YouTube video at the same position, or pop the video into a corner while you browse.
 - **Stats.** Time listened per day, top artists and songs, which services you actually use, plus your Spotify top lists and Last.fm scrobbles.
 - **Artist watch.** Follow artists and track their Deezer fans and Last.fm listeners/plays over time with daily snapshots and trend lines.

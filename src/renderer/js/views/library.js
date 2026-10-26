@@ -3,7 +3,7 @@ import { state, on, mf, connected, refreshLibrary } from '../state.js';
 import { spotify, youtube, apple, local } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
-import { tile, trackList, loadingLine, emptyState, toast, prompt } from '../ui/components.js';
+import { tile, trackList, trackGrid, trackCollection, viewToggle, loadingLine, emptyState, toast, prompt } from '../ui/components.js';
 import { importPlaylist } from '../playlists.js';
 
 const TABS = [
@@ -77,7 +77,7 @@ function songs(body, offs) {
     const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
     rows = tracks.filter((t) => !words.length || words.every((w) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(w)))
       .sort(sorters[sort]).map(local.map);
-    list = trackList(rows, { context: { type: 'library' } });
+    list = trackCollection(rows, { context: { type: 'library' } }, 'library');
     listSlot.replaceChildren(list);
   };
   const sortSel = h('select', { class: 'input', style: { width: '150px' }, onchange: (e) => { sort = e.target.value; draw(); } },
@@ -88,7 +88,7 @@ function songs(body, offs) {
       h('button', { class: 'btn primary', onclick: () => { if (engine.shuffle) engine.toggleShuffle(); engine.playList(rows, 0, { type: 'library' }); } }, icon('play', 16), 'Play all'),
       h('button', { class: 'btn ghost', onclick: () => { if (!engine.shuffle) engine.toggleShuffle(); engine.playList(rows, Math.floor(Math.random() * rows.length), { type: 'library' }); } }, icon('shuffle', 16), 'Shuffle'),
       h('span', { class: 't-meta' }, `${tracks.length.toLocaleString()} songs`),
-      h('span', { class: 'spacer' }), sortSel, filterIn),
+      h('span', { class: 'spacer' }), sortSel, filterIn, viewToggle('library', 'list', () => draw())),
     listSlot);
   draw();
   offs.push(() => list?._cleanup?.());
@@ -141,13 +141,19 @@ function artists(body) {
   }))));
 }
 
-function liked(body) {
+function liked(body, offs) {
   if (!state.liked.length) { body.append(emptyState('Nothing liked yet', 'Tap the heart on any song, from any service. Liked songs live here together.')); return; }
+  const slot = h('div');
+  let list = null;
+  const draw = () => { list?._cleanup?.(); list = trackCollection(state.liked, { context: { type: 'liked' } }, 'liked'); slot.replaceChildren(list); };
   body.append(
     h('div', { class: 'coll-actions' },
       h('button', { class: 'btn primary', onclick: () => engine.playList(state.liked, 0, { type: 'liked' }) }, icon('play', 16), 'Play'),
-      h('span', { class: 't-meta' }, `${state.liked.length} songs`)),
-    trackList(state.liked, { context: { type: 'liked' } }));
+      h('span', { class: 't-meta' }, `${state.liked.length} songs`),
+      h('span', { class: 'spacer' }), viewToggle('liked', 'list', draw)),
+    slot);
+  draw();
+  offs.push(() => list?._cleanup?.());
 }
 
 function playlists(body) {
@@ -202,7 +208,33 @@ function youtubeTab(body) {
       ? 'Your API key covers search and videos. To browse your own playlists and liked videos, add an OAuth client in Accounts and sign in.'
       : 'Link YouTube in Accounts to browse your playlists and liked videos.', h('button', { class: 'btn primary', onclick: () => go('accounts') }, 'Open Accounts')));
   }
-  remoteGrid(body, 'youtube', () => youtube.playlists(), [{ id: 'liked', name: 'Liked videos', sub: 'Your YouTube likes', image: null }]);
+  // Liked videos up front, then playlists.
+  const likedSlot = h('div', null, loadingLine());
+  let musicOnly = true;
+  let liked = [];
+  let grid = null;
+  const paintLiked = () => {
+    grid?._cleanup?.();
+    const list = musicOnly ? liked.filter((t) => t.music) : liked;
+    const shown = list.length ? list : liked;
+    grid = trackGrid(shown.slice(0, 24), { video: true, context: { type: 'remote', id: 'youtube:liked' }, onPlay: (i) => engine.playList(shown, i, { type: 'remote', id: 'youtube:liked' }) });
+    likedSlot.replaceChildren(
+      h('div', { class: 'coll-actions' },
+        h('button', { class: 'btn primary', onclick: () => engine.playList(shown, 0, { type: 'remote', id: 'youtube:liked' }) }, icon('play', 16), 'Play liked'),
+        h('button', { class: `chip ${musicOnly ? 'on' : ''}`, onclick: () => { musicOnly = !musicOnly; paintLiked(); }, title: 'Only videos in YouTube’s Music category' }, 'Music only'),
+        h('span', { class: 't-meta' }, `${shown.length} liked${shown.length > 24 ? ', newest 24 shown' : ''}`),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'link-btn', onclick: () => go('remote', { service: 'youtube', id: 'liked', name: 'Liked videos' }) }, 'See all')),
+      grid);
+  };
+  youtube.liked(300).then((l) => { liked = l; if (!l.length) likedSlot.replaceChildren(h('p', { class: 't-meta' }, 'No liked videos yet. Likes from YouTube and YouTube Music show up here.')); else paintLiked(); })
+    .catch((err) => likedSlot.replaceChildren(emptyState('Couldn’t load your liked videos', err.message)));
+  body.append(
+    h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, 'Liked videos')), likedSlot),
+    h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, 'Your playlists'))),
+  );
+  remoteGrid(body, 'youtube', () => youtube.playlists());
+  body.append(h('p', { class: 'note', style: { marginTop: '22px' } }, 'YouTube doesn’t let apps read your watch history, so recently played comes from what you play in MusicForge (Home → Jump back in).'));
 }
 function appleTab(body) {
   if (!connected('apple')) return linkFirst(body, 'Apple Music');

@@ -1,4 +1,4 @@
-import { h, icon, iconBtn, fmtTime, img, clear, debounce } from '../util.js';
+import { h, icon, iconBtn, fmtTime, img, setImg, clear, debounce } from '../util.js';
 import { state, on, emit, mf, isLiked, toggleLike, save } from '../state.js';
 import { engine } from '../player/engine.js';
 import { go, goBack, goForward, currentRoute, canGoBack, canGoForward } from '../router.js';
@@ -6,7 +6,7 @@ import { slider, srcBadge, trackMenu, prompt, toast, menu, modal, confirm } from
 import { LyricsView, nudgeOffset, offsetLabel, pickLyrics, copyLyrics } from '../lyrics.js';
 import { Visualizer } from '../visualizer.js';
 import { createPlaylist, addToPlaylist, renamePlaylist, deletePlaylist } from '../playlists.js';
-import { onEmbedExpand } from './embed.js';
+import { onEmbedExpand, onEmbedToggle, setEmbedPaused } from './embed.js';
 import { sleep, setSleep } from '../sleep.js';
 
 const NAV = [
@@ -32,6 +32,8 @@ export function init() {
   shortcuts();
   mf.on('player:command', debouncedCommand);
   onEmbedExpand(() => go('nowplaying'));
+  onEmbedToggle(() => engine.toggle());
+  on('state', () => setEmbedPaused(engine.state === 'paused'));
   document.getElementById('embed-expand').append(icon('expand', 14));
 }
 
@@ -49,7 +51,8 @@ function buildTitlebar() {
     const q = input.value.trim();
     if (!q) return;
     const r = currentRoute();
-    go('search', { q }, { replace: r?.name === 'search' });
+    // Keep the chosen type/source filters while editing the search text.
+    go('search', { ...(r?.name === 'search' ? r.params : {}), q }, { replace: r?.name === 'search' });
   };
   input.addEventListener('input', debounce(run, 380));
   input.addEventListener('keydown', (e) => {
@@ -203,7 +206,7 @@ function buildPlayerbar() {
     title.title = t?.title || '';
     clear(artist);
     if (t?.artist) artist.append(h('span', { style: { cursor: 'pointer' }, onclick: () => go('artist', { name: t.artist.split(',')[0].trim() }) }, t.artist));
-    if (t?.art) art.src = t.art; else { art.removeAttribute('src'); }
+    setImg(art, t?.art);
     clear(srcLine);
     if (engine.source) {
       srcLine.append(srcBadge(engine.source));

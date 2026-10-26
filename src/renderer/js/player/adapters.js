@@ -245,7 +245,8 @@ export class YouTubeAdapter {
     await new Promise((resolve) => {
       this.player = new YT.Player('yt-player', {
         width: '100%', height: '100%',
-        playerVars: { autoplay: 1, controls: 1, rel: 0, playsinline: 1, iv_load_policy: 3, origin: location.origin, enablejsapi: 1 },
+        // No YouTube controls: MusicForge's player bar drives it, and a click layer (see ui/embed.js) sits on top.
+        playerVars: { autoplay: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1, iv_load_policy: 3, cc_load_policy: 0, origin: location.origin, enablejsapi: 1 },
         events: {
           onReady: () => resolve(),
           onStateChange: (e) => this.onState(e.data),

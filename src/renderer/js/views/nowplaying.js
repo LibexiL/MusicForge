@@ -1,5 +1,5 @@
 // The stage: big artwork (or the video), stamped title, synced lyrics, full-width visualizer.
-import { h, icon, iconBtn, img } from '../util.js';
+import { h, icon, iconBtn, img, setImg } from '../util.js';
 import { state, on, save, mf } from '../state.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
@@ -88,7 +88,8 @@ export function render({ vis = false } = {}) {
       t?.album ? h('span', null, t.album) : null,
       t ? h('button', { class: 'link-btn', onclick: (e) => trackMenu(t, e) }, 'More…') : h('button', { class: 'btn small ghost', onclick: () => go('search') }, 'Find something to play'));
     const art = t?.artLarge || t?.art;
-    if (art) { mediaImg.src = art; backdropImg.src = t.art || art; } else { mediaImg.removeAttribute('src'); backdropImg.removeAttribute('src'); }
+    setImg(mediaImg, art);
+    setImg(backdropImg, t?.art || art);
     media.classList.toggle('video', embedKind() === 'youtube');
     attachSlot(embedKind() && !vis ? media : null);
     if (!vis) lyrics.load(t);

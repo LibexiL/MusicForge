@@ -1,122 +1,181 @@
+// Search: everything at once, laid out as grids. Filter by type (songs, artists, albums,
+// playlists, videos) and by source; songs can be shown as a grid or a list.
 import { h, icon, songKey, fmtNum } from '../util.js';
 import { state, connected, youtubeSearchable } from '../state.js';
 import { spotify, youtube, deezer, itunes, soundcloud, local, parseLink, NAMES, api } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
-import { tile, trackList, loadingLine, emptyState, toast } from '../ui/components.js';
+import { tile, trackList, trackGrid, trackCollection, viewToggle, topCard, loadingLine, emptyState, toast } from '../ui/components.js';
 import { importPlaylist } from '../playlists.js';
 
-const TABS = [
-  { id: 'all', text: 'All' },
-  { id: 'library', text: 'Your library' },
-  { id: 'spotify', text: 'Spotify' },
-  { id: 'youtube', text: 'YouTube' },
-  { id: 'deezer', text: 'Deezer' },
-  { id: 'itunes', text: 'Apple Music' },
-];
+const TYPES = [['all', 'All'], ['songs', 'Songs'], ['artists', 'Artists'], ['albums', 'Albums'], ['playlists', 'Playlists'], ['videos', 'Videos']];
+const SOURCES = [['everywhere', 'Everywhere'], ['library', 'Your library'], ['spotify', 'Spotify'], ['deezer', 'Deezer'], ['itunes', 'Apple Music']];
 
-function searchLocal(q) {
+function searchLocal(q, max = 60) {
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const out = [];
   for (const t of state.library.tracks) {
     const hay = `${t.title} ${t.artist} ${t.album}`.toLowerCase();
-    if (words.every((w) => hay.includes(w))) { out.push(local.map(t)); if (out.length >= 50) break; }
+    if (words.every((w) => hay.includes(w))) { out.push(local.map(t)); if (out.length >= max) break; }
   }
   return out;
 }
 
-export function render({ q = '', tab = 'all' } = {}) {
+const dedupe = (lists) => {
+  const seen = new Set();
+  const out = [];
+  for (const list of lists) for (const t of list || []) {
+    const k = songKey(t.artist, t.title);
+    if (!seen.has(k)) { seen.add(k); out.push(t); }
+  }
+  return out;
+};
+const ok = (v) => (Array.isArray(v) ? v : []);
+
+export function render({ q = '', type, tab, src = 'everywhere' } = {}) {
+  // Older links used "tab"; map them onto type/source.
+  if (!type) {
+    if (tab === 'youtube') type = 'videos';
+    else if (tab && tab !== 'all') { type = 'songs'; src = tab; } else type = 'all';
+  }
   const view = h('div', { class: 'view' });
   if (!q) {
     view.append(h('h1', { class: 't-display' }, 'Search'),
-      emptyState('Search everything at once', 'Type in the box above to search your library, Spotify, Deezer and Apple Music together. Paste a Spotify, YouTube, SoundCloud or Deezer link to open it directly.'));
+      emptyState('Search everything at once', 'Type in the box above to search your library, Spotify, Deezer and Apple Music together, with songs, artists, albums and playlists laid out side by side. Paste a Spotify, YouTube, SoundCloud or Deezer link to open it directly.'));
     setTimeout(() => document.getElementById('search-input').focus(), 0);
     return { el: view };
   }
-
   const link = parseLink(q);
   if (link) { renderLink(view, link); return { el: view }; }
 
-  const tabs = h('div', { class: 'tabs', role: 'tablist' }, TABS.map((t) => h('button', {
-    class: `chip ${t.id === tab ? 'on' : ''}`, role: 'tab', 'aria-selected': t.id === tab,
-    onclick: () => go('search', { q, tab: t.id }, { replace: true }),
-  }, t.text)));
-  view.append(h('div', { class: 'view-head' }, h('h1', { class: 't-display' }, `“${q}”`)), tabs);
+  const cleanups = [];
   const body = h('div');
-  view.append(body);
-  runSearch(body, q, tab);
-  return { el: view };
+  const reroute = (patch) => go('search', { q, type, src, ...patch }, { replace: true });
+  const typeChips = h('div', { class: 'tabs', role: 'tablist', style: { marginBottom: 0 } }, TYPES.map(([id, text]) => h('button', {
+    class: `chip ${id === type ? 'on' : ''}`, role: 'tab', 'aria-selected': id === type, onclick: () => reroute({ type: id }),
+  }, text)));
+  const srcSel = ['songs', 'albums', 'artists'].includes(type) ? h('select', { class: 'input', style: { width: '160px' }, 'aria-label': 'Source', onchange: (e) => reroute({ src: e.target.value }) },
+    SOURCES.filter(([id]) => !(type !== 'songs' && id === 'library')).map(([id, text]) => h('option', { value: id, selected: id === src }, text))) : null;
+  const toggle = ['all', 'songs'].includes(type) ? viewToggle('search', 'grid', () => draw()) : null;
+  view.append(
+    h('div', { class: 'view-head' }, h('h1', { class: 't-display' }, `“${q}”`)),
+    h('div', { class: 'search-bar' }, typeChips, h('span', { class: 'spacer' }), srcSel, toggle),
+    body);
+
+  let data = null;
+  const draw = () => {
+    cleanups.splice(0).forEach((f) => f());
+    if (data) paint(body, data, { q, type, src, cleanups, reroute });
+  };
+  body.append(loadingLine());
+  fetchFor(q, type, src).then((d) => { data = d; if (body.isConnected || body.parentNode) { body.replaceChildren(); draw(); } })
+    .catch((err) => body.replaceChildren(emptyState('Search failed', err.message)));
+  return { el: view, cleanup: () => cleanups.forEach((f) => f()) };
 }
 
-async function runSearch(body, q, tab) {
-  const block = (title, el) => h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, title)), el);
-  const errorLine = (svc, err) => h('p', { class: 't-meta' }, `${NAMES[svc]}: ${err.message}`);
-  body.append(loadingLine());
-
-  if (tab === 'library') {
-    const res = searchLocal(q);
-    body.replaceChildren(res.length ? trackList(res) : emptyState('Nothing in your library', state.library.folders.length ? 'No local songs match.' : 'Add a music folder in Library to search your own files.'));
-    return;
+async function fetchFor(q, type, src) {
+  const useSp = connected('spotify') && (src === 'everywhere' || src === 'spotify');
+  const useDz = src === 'everywhere' || src === 'deezer';
+  const errors = [];
+  const guard = (svc, p) => p.catch((e) => { errors.push(`${NAMES[svc]}: ${e.message}`); return null; });
+  if (type === 'videos') {
+    if (!youtubeSearchable()) return { needsYouTube: true };
+    return { videos: await guard('youtube', youtube.search(q, { music: false, max: 24 })) || [], errors };
   }
-  if (tab === 'youtube') {
-    if (!youtubeSearchable()) { body.replaceChildren(emptyState('YouTube search needs a key', 'Add a free YouTube Data API key in Accounts. Each search uses some of your daily quota, so YouTube is searched only from this tab.', h('button', { class: 'btn primary', onclick: () => go('accounts') }, 'Open Accounts'))); return; }
-    try {
-      const res = await youtube.search(q, { music: false, max: 20 });
-      body.replaceChildren(trackList(res, { showAlbum: false }));
-    } catch (err) { body.replaceChildren(errorLine('youtube', err)); }
-    return;
-  }
-  if (tab === 'spotify') {
-    if (!connected('spotify')) { body.replaceChildren(emptyState('Spotify isn’t linked', 'Link your Spotify account in Accounts to search it here.', h('button', { class: 'btn primary', onclick: () => go('accounts') }, 'Open Accounts'))); return; }
-    try {
-      const [first, second] = await Promise.all([spotify.search(q), api('spotify', '/search', { query: { q, type: 'track', limit: 10, offset: 10 }, ttl: 300 }).catch(() => null)]);
-      const more = (second?.tracks?.items || []).map((t) => spotify.map(t)).filter(Boolean);
-      body.replaceChildren(trackList([...first, ...more]));
-    } catch (err) { body.replaceChildren(errorLine('spotify', err)); }
-    return;
-  }
-  if (tab === 'deezer') {
-    try { body.replaceChildren(trackList(await deezer.search(q, 40))); } catch (err) { body.replaceChildren(errorLine('deezer', err)); }
-    return;
-  }
-  if (tab === 'itunes') {
-    try { body.replaceChildren(trackList(await itunes.search(q, 40))); } catch (err) { body.replaceChildren(errorLine('itunes', err)); }
-    return;
-  }
-
-  // All: library + Spotify + Deezer, merged and de-duplicated; artists from Deezer.
-  const [loc, sp, dz, artists] = await Promise.all([
-    Promise.resolve(searchLocal(q)),
-    connected('spotify') ? spotify.search(q).catch((e) => e) : Promise.resolve([]),
-    deezer.search(q, 25).catch((e) => e),
-    deezer.searchArtists(q, 8).catch(() => []),
+  if (type === 'playlists') return { playlists: ok(await guard('deezer', deezer.searchPlaylists(q, 40))), errors };
+  const want = (t) => type === 'all' || type === t;
+  const [sp, dzTracks, dzArtists, dzAlbums, dzPlaylists, itTracks] = await Promise.all([
+    useSp ? guard('spotify', spotify.searchAll(q)) : null,
+    useDz && want('songs') ? guard('deezer', deezer.search(q, type === 'songs' ? 60 : 30)) : null,
+    useDz && want('artists') ? guard('deezer', deezer.searchArtists(q, type === 'artists' ? 30 : 10)) : null,
+    useDz && want('albums') ? guard('deezer', deezer.searchAlbums(q, type === 'albums' ? 40 : 14)) : null,
+    type === 'all' ? guard('deezer', deezer.searchPlaylists(q, 12)) : null,
+    src === 'itunes' && want('songs') ? guard('itunes', itunes.search(q, 50)) : null,
   ]);
-  if (!body.isConnected && !body.parentNode) return;
-  body.replaceChildren();
-  if (artists.length) {
-    body.append(block('Artists', h('div', { class: 'tiles scroller' }, artists.map((a) => tile({
-      image: a.image, name: a.name, sub: a.fans ? `${fmtNum(a.fans)} fans` : '', round: true,
-      onOpen: () => go('artist', { name: a.name, dz: a.id }),
-    })))));
+  const localTracks = (src === 'everywhere' || src === 'library') && want('songs') ? searchLocal(q) : [];
+  const songs = src === 'itunes' ? ok(itTracks) : dedupe([localTracks, sp?.tracks, dzTracks]);
+  const artists = [...ok(dzArtists)];
+  for (const a of ok(sp?.artists)) if (!artists.some((x) => x.name.toLowerCase() === a.name.toLowerCase())) artists.push(a);
+  const albums = [];
+  const seenAl = new Set();
+  for (const a of [...ok(sp?.albums), ...ok(dzAlbums)]) {
+    const k = `${a.title}|${a.artist}`.toLowerCase();
+    if (!seenAl.has(k)) { seenAl.add(k); albums.push(a); }
   }
-  const seen = new Set();
-  const merged = [];
-  for (const list of [loc, Array.isArray(sp) ? sp : [], Array.isArray(dz) ? dz : []]) {
-    for (const t of list) {
-      const k = songKey(t.artist, t.title);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      merged.push(t);
-    }
+  return { songs, localCount: localTracks.length, artists, albums, playlists: ok(dzPlaylists), errors };
+}
+
+function section(title, el, more) {
+  return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, title), more || null), el);
+}
+const seeAll = (fn) => h('button', { class: 'link-btn', onclick: fn }, 'See all');
+
+const artistTile = (a) => tile({ image: a.image, name: a.name, sub: a.fans ? `${fmtNum(a.fans)} fans` : a.genres?.slice(0, 2).join(', ') || 'Artist', round: true, onOpen: () => go('artist', { name: a.name, dz: a.service === 'spotify' ? null : a.id }) });
+const albumTile = (a) => tile({
+  image: a.cover, name: a.title, sub: [a.artist, a.year || a.type].filter(Boolean).join(' · '),
+  onOpen: () => go('album', { kind: a.service, id: a.id }),
+  onPlay: async () => { const al = a.service === 'spotify' ? await spotify.albumInfo(a.id) : await deezer.album(a.id); engine.playList(al.tracks, 0, { type: 'album', id: `${a.service}:${a.id}` }); },
+});
+const playlistTile = (p) => tile({
+  image: p.image, name: p.name, sub: [p.owner, p.count ? `${p.count} songs` : null].filter(Boolean).join(' · '),
+  onOpen: () => go('remote', { service: 'deezer', id: p.id, name: p.name, image: p.image, url: p.url }),
+  onPlay: async () => { const pl = await deezer.playlist(p.id); engine.playList(pl.tracks, 0, { type: 'remote', id: `deezer:${p.id}` }); },
+});
+
+function paint(body, d, { q, type, src, cleanups, reroute }) {
+  const keep = (el) => { if (el?._cleanup) cleanups.push(el._cleanup); return el; };
+  const errLine = () => (d.errors?.length ? h('p', { class: 't-meta', style: { marginTop: '18px' } }, d.errors.join(' · ')) : null);
+
+  if (d.needsYouTube) {
+    body.append(emptyState('Video search needs a YouTube key', 'Add a free YouTube Data API key in Accounts. Each search uses some of your daily quota, so videos are only searched on this tab.', h('button', { class: 'btn primary', onclick: () => go('accounts') }, 'Open Accounts')));
+    return;
   }
-  if (merged.length) body.append(block('Songs', trackList(merged.slice(0, 40))));
-  else body.append(emptyState('No songs found', 'Try fewer words, or search a single service with the tabs above.'));
-  if (sp instanceof Error) body.append(errorLine('spotify', sp));
-  if (dz instanceof Error) body.append(errorLine('deezer', dz));
-  if (youtubeSearchable()) {
-    body.append(h('p', { class: 't-meta', style: { marginTop: '18px' } }, 'Looking for a video or a live version? ',
-      h('button', { class: 'link-btn', style: { textDecoration: 'underline' }, onclick: () => go('search', { q, tab: 'youtube' }, { replace: true }) }, 'Search YouTube')));
+  if (type === 'videos') {
+    body.append(d.videos.length ? keep(trackGrid(d.videos, { video: true, context: { type: 'search' } })) : emptyState('No videos found', 'Try different words.'), errLine() || '');
+    return;
   }
+  if (type === 'playlists') {
+    body.append(d.playlists.length ? h('div', { class: 'tiles' }, d.playlists.map(playlistTile)) : emptyState('No playlists found', 'Try different words.'), errLine() || '');
+    return;
+  }
+  if (type === 'artists') {
+    body.append(d.artists.length ? h('div', { class: 'tiles' }, d.artists.map(artistTile)) : emptyState('No artists found', 'Try a different spelling.'), errLine() || '');
+    return;
+  }
+  if (type === 'albums') {
+    body.append(d.albums.length ? h('div', { class: 'tiles' }, d.albums.map(albumTile)) : emptyState('No albums found', 'Try different words.'), errLine() || '');
+    return;
+  }
+  if (type === 'songs') {
+    body.append(d.songs.length ? keep(trackCollection(d.songs, { context: { type: 'search' } }, 'search', 'grid')) : emptyState('No songs found', src === 'library' ? 'Nothing in your local files matches.' : 'Try fewer words or another source.'), errLine() || '');
+    return;
+  }
+
+  // ---- All
+  const { songs, artists, albums, playlists } = d;
+  if (!songs.length && !artists.length && !albums.length && !playlists.length) {
+    body.append(emptyState('Nothing found', 'Try fewer words, check the spelling, or search one type at a time.'), errLine() || '');
+    return;
+  }
+  const ql = q.trim().toLowerCase();
+  const artistHit = artists.find((a) => a.name.toLowerCase() === ql) || (artists[0] && ql.startsWith(artists[0].name.toLowerCase()) ? artists[0] : null);
+  const top = artistHit
+    ? topCard({ image: artistHit.imageLarge || artistHit.image, round: true, name: artistHit.name, meta: artistHit.fans ? `Artist · ${fmtNum(artistHit.fans)} fans` : 'Artist', onOpen: () => go('artist', { name: artistHit.name, dz: artistHit.service === 'spotify' ? null : artistHit.id }) })
+    : songs[0] ? topCard({ image: songs[0].artLarge || songs[0].art, name: songs[0].title, meta: `Song · ${songs[0].artist}`, onOpen: () => engine.playList(songs, 0, { type: 'search' }), onPlay: () => engine.playList(songs, 0, { type: 'search' }) }) : null;
+  if (top) {
+    const firstSongs = songs.slice(0, 4);
+    body.append(h('div', { class: 'search-top' },
+      section('Top result', top),
+      firstSongs.length ? section('Songs', trackList(firstSongs, { showAlbum: false, onPlay: (i) => engine.playList(songs, i, { type: 'search' }) }), seeAll(() => reroute({ type: 'songs' }))) : h('div')));
+  }
+  if (artists.length) body.append(section('Artists', h('div', { class: 'tiles scroller' }, artists.slice(0, 12).map(artistTile)), artists.length > 6 ? seeAll(() => reroute({ type: 'artists' })) : null));
+  const rest = songs.slice(4, 28);
+  if (rest.length) body.append(section('More songs', keep(trackCollection(rest, { context: { type: 'search' }, onPlay: (i) => engine.playList(songs, i + 4, { type: 'search' }) }, 'search', 'grid')), seeAll(() => reroute({ type: 'songs' }))));
+  if (albums.length) body.append(section('Albums', h('div', { class: 'tiles' }, albums.slice(0, 12).map(albumTile)), albums.length > 12 ? seeAll(() => reroute({ type: 'albums' })) : null));
+  if (playlists.length) body.append(section('Playlists', h('div', { class: 'tiles' }, playlists.slice(0, 6).map(playlistTile)), seeAll(() => reroute({ type: 'playlists' }))));
+  const e = errLine();
+  if (e) body.append(e);
+  if (youtubeSearchable()) body.append(h('p', { class: 't-meta', style: { marginTop: '18px' } }, 'Looking for a music video or a live version? ', h('button', { class: 'link-btn', style: { textDecoration: 'underline' }, onclick: () => reroute({ type: 'videos' }) }, 'Search YouTube videos')));
 }
 
 async function renderLink(view, link) {

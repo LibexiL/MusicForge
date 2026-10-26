@@ -4,7 +4,7 @@ import { state, on, mf } from '../state.js';
 import { spotify, youtube, deezer, local, NAMES } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
-import { trackList, loadingLine, emptyState, toast, prompt, confirm, menu, addToPlaylistFlow } from '../ui/components.js';
+import { trackList, trackCollection, viewToggle, viewMode, loadingLine, emptyState, toast, prompt, confirm, menu, addToPlaylistFlow } from '../ui/components.js';
 import { getPlaylist, renamePlaylist, deletePlaylist, importPlaylist, resyncPlaylist, fetchRemote, movePlaylistTrack } from '../playlists.js';
 import { groupAlbums } from './library.js';
 
@@ -71,12 +71,13 @@ function own({ id }) {
     const paint = () => {
       list?._cleanup?.();
       const canReorder = filtered === p.tracks && p.tracks.length <= 150;
-      list = trackList(filtered, {
+      list = trackCollection(filtered, {
         context, playlistId: filtered === p.tracks ? p.id : null, onPlay: (i) => engine.playList(filtered, i, context),
         reorder: canReorder ? (from, to) => { movePlaylistTrack(p.id, from, to); draw(); } : null,
-      });
+      }, 'playlist');
       listSlot.replaceChildren(list);
     };
+    a.el.append(h('span', { class: 'spacer' }), viewToggle('playlist', 'list', () => draw()));
     if (p.tracks.length > 12) {
       a.setFilter(h('input', { class: 'coll-filter', placeholder: 'Filter this playlist', oninput: (e) => {
         const w = e.target.value.toLowerCase().trim();
@@ -87,7 +88,7 @@ function own({ id }) {
     view.append(header({ kind, title: p.name, tracks: p.tracks, extra: [p.source ? `synced ${fmtAgo(p.updated)}` : null] }), a.el);
     if (!p.tracks.length) view.append(emptyState('This playlist is empty', 'Drag songs onto this playlist in the sidebar, or right-click any song and choose Add to playlist.'));
     else {
-      if (p.tracks.length <= 150) view.append(h('p', { class: 'note', style: { margin: '0 0 10px' } }, 'Drag songs to reorder them.'));
+      if (p.tracks.length <= 150 && viewMode('playlist') === 'list') view.append(h('p', { class: 'note', style: { margin: '0 0 10px' } }, 'Drag songs to reorder them.'));
       view.append(listSlot);
       paint();
     }
@@ -124,8 +125,11 @@ function remote({ service, id, name, image, url }) {
       } }, icon('import', 16), 'Import to MusicForge');
     const a = actions(tracks, context, url ? () => [{ text: `Open in ${NAMES[service]}`, icon: 'external', run: () => mf.invoke('shell:open', url) }] : null);
     a.el.append(importBtn);
-    list = trackList(tracks, { context });
-    body.replaceChildren(header({ kind: `${NAMES[service]} playlist`, title: name, tracks, image }), a.el, tracks.length ? list : emptyState('No songs', 'This playlist is empty.'));
+    const slot = h('div');
+    const paintRemote = () => { list?._cleanup?.(); list = trackCollection(tracks, { context }, 'playlist'); slot.replaceChildren(list); };
+    a.el.append(h('span', { class: 'spacer' }), viewToggle('playlist', 'list', paintRemote));
+    paintRemote();
+    body.replaceChildren(header({ kind: `${NAMES[service]} playlist`, title: name, tracks, image }), a.el, tracks.length ? slot : emptyState('No songs', 'This playlist is empty.'));
   }).catch((err) => body.replaceChildren(header({ kind: `${NAMES[service]} playlist`, title: name, tracks: [], image }), emptyState("Couldn't load this playlist", err.message)));
   return { el: view, cleanup: () => list?._cleanup?.() };
 }
@@ -142,8 +146,8 @@ function album({ kind, key, id }) {
   }
   const body = h('div', null, loadingLine());
   view.append(body);
-  deezer.album(id).then((al) => {
-    const context = { type: 'album', id: `dz:${id}` };
+  (kind === 'spotify' ? spotify.albumInfo(id) : deezer.album(id)).then((al) => {
+    const context = { type: 'album', id: `${kind === 'spotify' ? 'sp' : 'dz'}:${id}` };
     body.replaceChildren(header({ kind: 'Album', title: al.title, tracks: al.tracks, image: al.cover, extra: [al.artist] }), actions(al.tracks, context).el, trackList(al.tracks, { showAlbum: false, context }));
   }).catch((err) => body.replaceChildren(emptyState("Couldn't load this album", err.message)));
   return { el: view };

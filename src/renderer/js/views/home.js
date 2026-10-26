@@ -1,19 +1,29 @@
 import { h, icon, iconBtn, fmtNum } from '../util.js';
 import { state, connected, mf, refreshLibrary } from '../state.js';
-import { spotify, deezer } from '../services.js';
+import { spotify, deezer, youtube } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
-import { tile, trackList, loadingLine, emptyState } from '../ui/components.js';
+import { tile, trackList, trackMenu, loadingLine, emptyState } from '../ui/components.js';
 
-function section(title, action, body) {
+function section(title, action, body, { scroll = body?.classList?.contains('scroller') } = {}) {
   // Horizontal rows get arrow buttons, since a mouse wheel scrolls the page, not the row.
-  const scroller = body?.classList?.contains('scroller') ? body : null;
-  const arrows = scroller ? h('div', { class: 'row-arrows' },
-    iconBtn('back', 'Scroll left', () => scroller.scrollBy({ left: -scroller.clientWidth * 0.8, behavior: 'smooth' }), { class: 'small', size: 16 }),
-    iconBtn('fwd', 'Scroll right', () => scroller.scrollBy({ left: scroller.clientWidth * 0.8, behavior: 'smooth' }), { class: 'small', size: 16 })) : null;
-  return h('section', { class: 'section' },
+  const by = (dir) => () => { const sc = el.querySelector('.scroller'); sc?.scrollBy({ left: dir * sc.clientWidth * 0.8, behavior: 'smooth' }); };
+  const arrows = scroll ? h('div', { class: 'row-arrows' },
+    iconBtn('back', 'Scroll left', by(-1), { class: 'small', size: 16 }),
+    iconBtn('fwd', 'Scroll right', by(1), { class: 'small', size: 16 })) : null;
+  const el = h('section', { class: 'section' },
     h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, title), h('div', { class: 'row', style: { gap: '12px' } }, action || null, arrows)),
     body);
+  return el;
+}
+
+// A row of songs as tiles; `video` uses 16:9 thumbnails.
+function songRow(tracks, { video = false, context } = {}) {
+  return h('div', { class: `tiles scroller ${video ? 'videos' : ''}` }, tracks.map((t, i) => {
+    const el = tile({ image: video ? (t.artLarge || t.art) : t.art, name: t.title, sub: t.artist, onOpen: () => engine.playList(tracks, i, context), onPlay: () => engine.playList(tracks, i, context) });
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); trackMenu(t, e, { list: tracks, index: i, context }); });
+    return el;
+  }));
 }
 
 async function fill(slot, fn) {
@@ -76,13 +86,41 @@ export function render() {
 
   if (connected('spotify')) {
     const slot = h('div');
-    view.append(section('Recently on Spotify', null, slot));
+    view.append(section('Recently on Spotify', null, slot, { scroll: true }));
     fill(slot, async () => {
       const items = await spotify.recent();
       const uniq = [];
       const keys = new Set();
       for (const t of items) if (!keys.has(t.key)) { keys.add(t.key); uniq.push(t); }
       return h('div', { class: 'tiles scroller' }, uniq.slice(0, 16).map((t, i) => tile({ image: t.art, name: t.title, sub: t.artist, onOpen: () => engine.playList(uniq, i), onPlay: () => engine.playList(uniq, i) })));
+    });
+  }
+
+  if (connected('youtube')) {
+    const likedSlot = h('div');
+    view.append(section('Liked on YouTube', h('button', { class: 'link-btn', onclick: () => go('remote', { service: 'youtube', id: 'liked', name: 'Liked videos' }) }, 'See all'), likedSlot, { scroll: true }));
+    fill(likedSlot, async () => {
+      const liked = await youtube.liked(100);
+      if (!liked.length) return h('p', { class: 't-meta' }, 'No liked videos yet. Like songs on YouTube or YouTube Music and they show up here.');
+      const music = liked.filter((t) => t.music);
+      const list = music.length >= 6 ? music : liked;
+      return songRow(list.slice(0, 30), { video: true, context: { type: 'remote', id: 'youtube:liked' } });
+    });
+    const plSlot = h('div');
+    view.append(section('Your YouTube playlists', h('button', { class: 'link-btn', onclick: () => go('library', { tab: 'youtube' }) }, 'See all'), plSlot, { scroll: true }));
+    fill(plSlot, async () => {
+      const lists = await youtube.playlists();
+      if (!lists.length) return h('p', { class: 't-meta' }, 'You have no YouTube playlists yet.');
+      return h('div', { class: 'tiles scroller' }, lists.slice(0, 20).map((p) => tile({ image: p.image, name: p.name, sub: `${p.count} videos`, onOpen: () => go('remote', { service: 'youtube', id: p.id, name: p.name, image: p.image, url: p.url }) })));
+    });
+  }
+
+  if (connected('spotify')) {
+    const plSlot = h('div');
+    view.append(section('Your Spotify playlists', h('button', { class: 'link-btn', onclick: () => go('library', { tab: 'spotify' }) }, 'See all'), plSlot, { scroll: true }));
+    fill(plSlot, async () => {
+      const lists = await spotify.playlists();
+      return h('div', { class: 'tiles scroller' }, [{ id: 'liked', name: 'Liked Songs', sub: 'Your Spotify likes', image: null }, ...lists.slice(0, 20)].map((p) => tile({ image: p.image, name: p.name, sub: p.sub || `${p.count} songs`, onOpen: () => go('remote', { service: 'spotify', id: p.id, name: p.name, image: p.image, url: p.url }) })));
     });
   }
 

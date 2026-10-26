@@ -104,6 +104,25 @@ export const spotify = {
     const d = await api('spotify', '/search', { query: { q, type: 'track', limit: 10 }, ttl: 300 });
     return (d.tracks?.items || []).map((t) => this.map(t)).filter(Boolean);
   },
+  // Songs, albums and artists in one request (Spotify caps each at 10 for personal apps).
+  async searchAll(q) {
+    const d = await api('spotify', '/search', { query: { q, type: 'track,album,artist', limit: 10 }, ttl: 300 });
+    return {
+      tracks: (d.tracks?.items || []).map((t) => this.map(t)).filter(Boolean),
+      albums: (d.albums?.items || []).filter(Boolean).map((a) => ({
+        id: a.id, title: a.name, cover: pickImage(a.images, 300), artist: (a.artists || []).map((x) => x.name).join(', '),
+        year: (a.release_date || '').slice(0, 4), type: a.album_type, service: 'spotify',
+      })),
+      artists: (d.artists?.items || []).filter(Boolean).map((a) => ({ id: a.id, name: a.name, image: pickImage(a.images, 300), genres: a.genres || [], service: 'spotify' })),
+    };
+  },
+  async albumInfo(id) {
+    const a = await api('spotify', `/albums/${id}`, { ttl: 3600 });
+    return {
+      title: a.name, cover: pickImage(a.images, 600), artist: (a.artists || []).map((x) => x.name).join(', '),
+      tracks: (a.tracks?.items || []).map((t) => this.map({ ...t, album: a })).filter(Boolean),
+    };
+  },
   async findMatch(track) {
     const q = `track:${track.title.replace(/["']/g, '')} artist:${(track.artist || '').split(',')[0]}`;
     const d = await api('spotify', '/search', { query: { q, type: 'track', limit: 3 }, ttl: 3600 });
@@ -158,6 +177,7 @@ export const youtube = {
       art: (th.medium || th.default || {}).url || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
       artLarge: (th.maxres || th.high || th.medium || {}).url || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
       src: { youtube: id }, origin: 'youtube', url: `https://www.youtube.com/watch?v=${id}`, rawTitle: decodeEntities(sn.title),
+      music: sn.categoryId === '10',
     };
   },
   async durations(ids) {
@@ -210,11 +230,13 @@ export const youtube = {
     const durs = await this.durations(items.map((i) => i.contentDetails?.videoId).filter(Boolean)).catch(() => ({}));
     return items.map((i) => this.map(i, durs)).filter(Boolean);
   },
+  // Liked videos, newest first. YouTube Music likes are YouTube likes, so they're included;
+  // `music` marks videos in YouTube's Music category.
   async liked(max = 1000) {
     const out = [];
     let token;
     do {
-      const d = await api('youtube', '/videos', { query: { part: 'snippet,contentDetails', myRating: 'like', maxResults: 50, pageToken: token } });
+      const d = await api('youtube', '/videos', { query: { part: 'snippet,contentDetails', myRating: 'like', maxResults: 50, pageToken: token }, ttl: 300 });
       for (const v of d.items || []) { const t = this.map(v); if (t) out.push(t); }
       token = d.nextPageToken;
     } while (token && out.length < max);
@@ -243,6 +265,14 @@ export const deezer = {
   async search(q, limit = 25) {
     const d = await api('deezer', '/search', { query: { q, limit }, ttl: 900 });
     return (d.data || []).map((t) => this.map(t)).filter(Boolean);
+  },
+  async searchAlbums(q, limit = 18) {
+    const d = await api('deezer', '/search/album', { query: { q, limit }, ttl: 900 });
+    return (d.data || []).map((a) => ({ id: a.id, title: a.title, cover: a.cover_medium, coverLarge: a.cover_xl, artist: a.artist?.name || '', type: a.record_type, count: a.nb_tracks, service: 'deezer' }));
+  },
+  async searchPlaylists(q, limit = 18) {
+    const d = await api('deezer', '/search/playlist', { query: { q, limit }, ttl: 900 });
+    return (d.data || []).map((p) => ({ id: p.id, name: p.title, image: p.picture_medium, count: p.nb_tracks, owner: p.user?.name || '', service: 'deezer', url: p.link }));
   },
   async searchArtists(q, limit = 8) {
     const d = await api('deezer', '/search/artist', { query: { q, limit }, ttl: 900 });

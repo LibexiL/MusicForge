@@ -71,6 +71,7 @@ const P = {
   note: '<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>',
   fullscreen: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
@@ -162,10 +163,17 @@ export function songKey(artist, title) {
   return `${clean((artist || '').split(/,|&| x /)[0])}|${clean(title)}`;
 }
 
+// Transparent pixel for missing artwork: avoids Chrome's broken-image border; the CSS placeholder shows instead.
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 export function img(src, alt = '', cls = '') {
   const i = h('img', { class: cls, alt, loading: 'lazy', decoding: 'async', draggable: false });
   if (src) i.src = src;
-  else i.classList.add('empty');
-  i.onerror = () => { i.removeAttribute('src'); i.classList.add('empty'); };
+  else { i.src = BLANK; i.classList.add('empty'); }
+  i.onerror = () => { if (i.src !== BLANK) { i.src = BLANK; i.classList.add('empty'); } };
+  i.onload = () => { if (i.src !== BLANK) i.classList.remove('empty'); };
   return i;
+}
+export function setImg(i, src) {
+  if (src) i.src = src;
+  else { i.src = BLANK; i.classList.add('empty'); }
 }

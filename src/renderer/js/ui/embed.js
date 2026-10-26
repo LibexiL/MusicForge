@@ -18,6 +18,16 @@ export function embedKind() { return kind; }
 export function onEmbedExpand(fn) { onExpand = fn; }
 document.getElementById('embed-expand').addEventListener('click', () => onExpand?.());
 
+// A transparent layer over the YouTube player: YouTube's own controls, title bar and
+// pause suggestions never get the mouse. Click = play/pause, double-click = open Now Playing.
+const shield = document.getElementById('yt-shield');
+let onToggle = null;
+let clickTimer = null;
+export function onEmbedToggle(fn) { onToggle = fn; }
+export function setEmbedPaused(paused) { host.classList.toggle('paused', !!paused); }
+shield.addEventListener('click', () => { clearTimeout(clickTimer); clickTimer = setTimeout(() => onToggle?.(), 220); });
+shield.addEventListener('dblclick', () => { clearTimeout(clickTimer); onExpand?.(); });
+
 // Called by a view that has a place for the player; pass null when the view goes away.
 export function attachSlot(el) {
   slot = el;
