@@ -6,6 +6,7 @@ import { go } from '../router.js';
 import { toast, confirm } from '../ui/components.js';
 import { PALETTES, listInputDevices, startSystemCapture, stopSystemCapture, systemCaptureActive } from '../visualizer.js';
 import { resetAccent, accentFromArt, applyMotion } from '../theme.js';
+import { nudgeOffset, offsetLabel } from '../lyrics.js';
 import { update, checkForUpdates } from '../ui/update.js';
 import { on } from '../state.js';
 
@@ -34,6 +35,10 @@ export function render() {
   const set = (k, v) => { s[k] = v; save('settings'); };
   const setVis = (k, v) => { s.vis[k] = v; save('settings'); };
   const view = h('div', { class: 'view settings' }, h('div', { class: 'view-head' }, h('h1', { class: 't-display' }, 'Settings')));
+  const jump = h('nav', { class: 'tabs settings-jump', 'aria-label': 'Settings sections' });
+  view.append(jump);
+  // Built after the groups exist (see bottom of render).
+  const buildJump = () => jump.append(...[...view.querySelectorAll('.set-group > h2')].map((hd) => h('button', { class: 'chip', onclick: () => hd.scrollIntoView({ behavior: state.settings.reduceMotion ? 'auto' : 'smooth', block: 'start' }) }, hd.textContent)));
 
   // ---- Playback
   const orderList = h('ul', { class: 'order-list' });
@@ -99,9 +104,15 @@ export function render() {
   ));
 
   // ---- Lyrics
-  const offOut = h('span', { class: 't-meta' }, `${(s.lyricsOffset || 0).toFixed(1)} s`);
+  const offOut = h('span', { class: 't-meta', style: { minWidth: '64px', textAlign: 'center' } }, offsetLabel());
+  const offPaint = () => { offOut.textContent = offsetLabel(); };
   view.append(group('Lyrics',
-    row('Timing offset', 'Shift synced lyrics if they run early or late. Positive shows lines later.', iconBtn('back', 'Earlier', () => { set('lyricsOffset', Math.round(((s.lyricsOffset || 0) - 0.1) * 10) / 10); offOut.textContent = `${s.lyricsOffset.toFixed(1)} s`; }, { class: 'small', size: 15 }), offOut, iconBtn('fwd', 'Later', () => { set('lyricsOffset', Math.round(((s.lyricsOffset || 0) + 0.1) * 10) / 10); offOut.textContent = `${s.lyricsOffset.toFixed(1)} s`; }, { class: 'small', size: 15 })),
+    row('Timing', 'If lyrics run ahead of the singer, press Later; if they lag, press Earlier. The [ and ] keys do the same while listening.',
+      h('button', { class: 'btn small ghost', onclick: () => { nudgeOffset(-0.25); offPaint(); } }, 'Earlier'), offOut,
+      h('button', { class: 'btn small ghost', onclick: () => { nudgeOffset(0.25); offPaint(); } }, 'Later'),
+      h('button', { class: 'btn small ghost', onclick: () => { set('lyricsOffset', 0); offPaint(); } }, 'Reset')),
+    row('Chosen lyrics', `${Object.keys(state.lyricsPicks || {}).length} songs use lyrics you picked with “Wrong lyrics?”.`,
+      h('button', { class: 'btn small ghost', onclick: () => { state.lyricsPicks = {}; save('lyricsPicks'); toast('Back to automatic lyrics for every song'); } }, 'Reset all')),
   ));
 
   // ---- Appearance
@@ -121,6 +132,7 @@ export function render() {
   view.append(group('Desktop',
     row('Tray icon', 'Play, pause and skip from the system tray.', toggle(() => s.tray, (v) => { set('tray', v); mf.invoke('win:tray', v); if (!v && s.closeToTray) set('closeToTray', false); }, 'Tray icon')),
     row('Keep playing when the window closes', 'Closing the window hides it to the tray instead of quitting.', toggle(() => s.closeToTray, (v) => { set('closeToTray', v); if (v && !s.tray) { set('tray', true); mf.invoke('win:tray', true); } }, 'Close to tray')),
+    row('Song notifications', 'Show a desktop notification when a new song starts while MusicForge is in the background.', toggle(() => s.notify, (v) => set('notify', v), 'Song notifications')),
     row('Global media keys', 'Play/Pause, Next and Previous keys work while MusicForge is in the background. On Linux, desktop media controls also work through MPRIS.', toggle(() => s.mediaKeys, (v) => { set('mediaKeys', v); mf.invoke('win:mediaKeys', v); }, 'Global media keys')),
     row('Scan folders on startup', 'Picks up new and changed files each time MusicForge opens.', toggle(() => s.scanOnStart, (v) => set('scanOnStart', v), 'Scan folders on startup'), h('button', { class: 'btn small ghost', onclick: () => go('library', { tab: 'folders' }) }, 'Folders')),
   ));
@@ -172,6 +184,7 @@ export function render() {
     row('MusicForge', `Version ${state.info.version} · Electron ${state.info.electron} · Chromium ${state.info.chrome}`, h('button', { class: 'btn ghost', onclick: () => mf.invoke('shell:open', 'https://github.com/LibexiL/MusicForge') }, icon('external', 16), 'GitHub')),
     row('Credits', 'Lyrics from LRCLIB. Charts, previews and fan counts from Deezer. Catalogue search from Apple. Archivo typeface by Omnibus-Type (OFL).'),
   ));
+  buildJump();
   return { el: view };
 }
 

@@ -15,6 +15,19 @@ engine.restore();
 if (state.settings.outputDevice) engine.setOutput(state.settings.outputDevice);
 
 on('track', () => accentFromArt(engine.track?.art || engine.track?.artLarge));
+
+// Optional desktop notification when a new song starts and MusicForge isn't focused.
+let notified = null;
+on('track', () => {
+  const t = engine.track;
+  if (!t || !engine.source || notified === t.key) return;
+  notified = t.key;
+  if (!state.settings.notify || document.hasFocus()) return;
+  try {
+    const n = new Notification(t.title, { body: [t.artist, t.album].filter(Boolean).join(' — '), icon: t.art || undefined, silent: true, tag: 'musicforge-now-playing' });
+    n.onclick = () => { window.focus(); go('nowplaying'); };
+  } catch { /* notifications unavailable */ }
+});
 accentFromArt(engine.track?.art);
 
 mf.on('library:progress', (p) => {

@@ -30,6 +30,8 @@ export const DEFAULT_SETTINGS = {
   outputDevice: '',
   resolveWithYouTube: true,
   autoUpdate: true,
+  notify: false,
+  remainingTime: false,
 };
 
 export const state = {
@@ -41,11 +43,12 @@ export const state = {
   history: [],
   watchlist: [],
   resolve: {},
+  lyricsPicks: {},
   queue: null,
   library: { folders: [], tracks: [], scanning: false },
 };
 
-const PERSISTED = ['settings', 'playlists', 'liked', 'history', 'watchlist', 'resolve', 'queue'];
+const PERSISTED = ['settings', 'playlists', 'liked', 'history', 'watchlist', 'resolve', 'queue', 'lyricsPicks'];
 const savers = {};
 for (const key of PERSISTED) {
   savers[key] = debounce(() => mf.invoke('store:set', key, state[key]), key === 'queue' ? 2000 : 400);
@@ -79,6 +82,7 @@ export async function loadState() {
   for (const k of ['playlists', 'liked', 'history', 'watchlist']) if (Array.isArray(data[k])) state[k] = data[k];
   if (data.resolve && typeof data.resolve === 'object') state.resolve = data.resolve;
   if (data.queue) state.queue = data.queue;
+  if (data.lyricsPicks && typeof data.lyricsPicks === 'object') state.lyricsPicks = data.lyricsPicks;
 
   mf.on('auth:changed', (a) => { state.auth = a; emit('auth', a); });
 }

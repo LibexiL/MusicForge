@@ -5,7 +5,7 @@ import { spotify, youtube, deezer, local, NAMES } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
 import { trackList, loadingLine, emptyState, toast, prompt, confirm, menu, addToPlaylistFlow } from '../ui/components.js';
-import { getPlaylist, renamePlaylist, deletePlaylist, importPlaylist, resyncPlaylist, fetchRemote } from '../playlists.js';
+import { getPlaylist, renamePlaylist, deletePlaylist, importPlaylist, resyncPlaylist, fetchRemote, movePlaylistTrack } from '../playlists.js';
 import { groupAlbums } from './library.js';
 
 function collage(tracks, fallbackImage) {
@@ -70,7 +70,11 @@ function own({ id }) {
     const listSlot = h('div');
     const paint = () => {
       list?._cleanup?.();
-      list = trackList(filtered, { context, playlistId: filtered === p.tracks ? p.id : null, onPlay: (i) => engine.playList(filtered, i, context) });
+      const canReorder = filtered === p.tracks && p.tracks.length <= 150;
+      list = trackList(filtered, {
+        context, playlistId: filtered === p.tracks ? p.id : null, onPlay: (i) => engine.playList(filtered, i, context),
+        reorder: canReorder ? (from, to) => { movePlaylistTrack(p.id, from, to); draw(); } : null,
+      });
       listSlot.replaceChildren(list);
     };
     if (p.tracks.length > 12) {
@@ -81,8 +85,12 @@ function own({ id }) {
       } }));
     }
     view.append(header({ kind, title: p.name, tracks: p.tracks, extra: [p.source ? `synced ${fmtAgo(p.updated)}` : null] }), a.el);
-    if (!p.tracks.length) view.append(emptyState('This playlist is empty', 'Right-click any song, anywhere, and choose Add to playlist.'));
-    else { view.append(listSlot); paint(); }
+    if (!p.tracks.length) view.append(emptyState('This playlist is empty', 'Drag songs onto this playlist in the sidebar, or right-click any song and choose Add to playlist.'));
+    else {
+      if (p.tracks.length <= 150) view.append(h('p', { class: 'note', style: { margin: '0 0 10px' } }, 'Drag songs to reorder them.'));
+      view.append(listSlot);
+      paint();
+    }
   };
   draw();
   const off1 = on('playlist-changed', (pid) => { if (pid === id) draw(); });

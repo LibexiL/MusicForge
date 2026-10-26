@@ -2,11 +2,12 @@ import { h, icon, iconBtn, fmtTime, img, clear, debounce } from '../util.js';
 import { state, on, emit, mf, isLiked, toggleLike, save } from '../state.js';
 import { engine } from '../player/engine.js';
 import { go, goBack, goForward, currentRoute, canGoBack, canGoForward } from '../router.js';
-import { slider, srcBadge, trackMenu, prompt, toast } from './components.js';
-import { LyricsView } from '../lyrics.js';
+import { slider, srcBadge, trackMenu, prompt, toast, menu, modal, confirm } from './components.js';
+import { LyricsView, nudgeOffset, offsetLabel, pickLyrics, copyLyrics } from '../lyrics.js';
 import { Visualizer } from '../visualizer.js';
-import { createPlaylist } from '../playlists.js';
+import { createPlaylist, addToPlaylist, renamePlaylist, deletePlaylist } from '../playlists.js';
 import { onEmbedExpand } from './embed.js';
+import { sleep, setSleep } from '../sleep.js';
 
 const NAV = [
   { id: 'home', text: 'Home', icon: 'home' },
@@ -88,11 +89,26 @@ function buildSidebar() {
     for (const p of state.playlists) {
       const art = p.tracks.find((t) => t.art)?.art;
       const playing = engine.context?.type === 'playlist' && engine.context.id === p.id;
-      plNav.append(h('li', null, h('button', {
+      const btn = h('button', {
         class: r?.name === 'playlist' && r.params.id === p.id ? 'active' : '',
         onclick: () => go('playlist', { id: p.id }),
-        title: p.name,
-      }, art ? img(art) : h('span', { class: 'pl-art-empty' }, icon('note', 15)), h('span', { class: 'nm' }, p.name), playing ? h('span', { class: 'playing-dot', title: 'Playing' }) : null)));
+        title: `${p.name} · ${p.tracks.length} songs`,
+        oncontextmenu: (e) => { e.preventDefault(); playlistMenu(p, e); },
+      }, art ? img(art) : h('span', { class: 'pl-art-empty' }, icon('note', 15)), h('span', { class: 'nm' }, p.name), playing ? h('span', { class: 'playing-dot', title: 'Playing' }) : null);
+      // Drop songs dragged from any list onto a playlist to add them.
+      btn.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('application/x-mf-tracks')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; btn.classList.add('drop'); } });
+      btn.addEventListener('dragleave', () => btn.classList.remove('drop'));
+      btn.addEventListener('drop', (e) => {
+        e.preventDefault();
+        btn.classList.remove('drop');
+        try {
+          const tracks = JSON.parse(e.dataTransfer.getData('application/x-mf-tracks'));
+          const n = addToPlaylist(p.id, tracks);
+          toast(n ? `Added ${n === 1 ? `“${tracks[0].title}”` : `${n} songs`} to “${p.name}”` : `Already in “${p.name}”`);
+          emit('playlist-changed', p.id);
+        } catch { /* not ours */ }
+      });
+      plNav.append(h('li', null, btn));
     }
   };
   renderPlaylists();
@@ -137,7 +153,8 @@ function buildPlayerbar() {
   const nextBtn = iconBtn('next', 'Next (Ctrl+Right)', () => engine.next(), { size: 18 });
   const repeatBtn = iconBtn('repeat', 'Repeat (R)', () => engine.cycleRepeat(), { size: 18 });
   const tCur = h('span', { class: 'tm' }, '0:00');
-  const tDur = h('span', { class: 'tm' }, '0:00');
+  const tDur = h('button', { class: 'tm tm-btn', title: 'Show remaining time' }, '0:00');
+  tDur.onclick = () => { state.settings.remainingTime = !state.settings.remainingTime; save('settings'); lastSec = -1; paintTime(); };
   const seek = slider({ value: 0, max: 1, label: 'Seek', format: fmtTime, onInput: (v) => { tCur.textContent = fmtTime(v); }, onCommit: (v) => engine.seek(v) });
   const center = h('div', { class: 'pb-center' },
     h('div', { class: 'pb-controls' }, shuffleBtn, prevBtn, playBtn, nextBtn, repeatBtn),
@@ -149,9 +166,23 @@ function buildPlayerbar() {
   const videoBtn = iconBtn('video', 'Music video', () => go('video'), { size: 19 });
   const queueBtn = iconBtn('queue', 'Queue (Q)', () => togglePanel('queue'), { size: 19 });
   const volBtn = iconBtn('volume', 'Mute (M)', () => engine.toggleMute(), { size: 19 });
+  const sleepPill = h('button', { class: 'sleep-pill', hidden: true, title: 'Sleep timer. Click to change.' });
+  const moreBtn = iconBtn('more', 'More', (e) => playerMenu(e), { size: 19 });
+  sleepPill.onclick = (e) => playerMenu(e);
   const vol = slider({ value: state.settings.volume, max: 1, label: 'Volume', onInput: (v) => engine.setVolume(v), onCommit: (v) => engine.setVolume(v) });
   vol.el.classList.add('pb-vol');
-  const right = h('div', { class: 'pb-right' }, visCanvas, lyricsBtn, npBtn, videoBtn, queueBtn, volBtn, vol.el);
+  const right = h('div', { class: 'pb-right' }, visCanvas, sleepPill, lyricsBtn, npBtn, videoBtn, queueBtn, moreBtn, volBtn, vol.el);
+  const wheelVol = (e) => { e.preventDefault(); engine.setVolume((state.settings.muted ? 0 : state.settings.volume) + (e.deltaY < 0 ? 0.05 : -0.05)); };
+  vol.el.addEventListener('wheel', wheelVol, { passive: false });
+  volBtn.addEventListener('wheel', wheelVol, { passive: false });
+  const paintSleep = () => {
+    const sl = sleep.mode;
+    sleepPill.hidden = !sl;
+    if (sl === 'track') sleepPill.replaceChildren(icon('moon', 14), 'End of song');
+    else if (sl === 'time') sleepPill.replaceChildren(icon('moon', 14), `${Math.max(1, Math.ceil((sleep.until - Date.now()) / 60000))} min`);
+  };
+  on('sleep', paintSleep);
+  setInterval(() => { if (sleep.mode === 'time') paintSleep(); }, 15000);
   bar.append(now, center, right);
 
   const mini = new Visualizer(visCanvas, { bars: 18, style: 'bars', compact: true, fpsCap: 30 });
@@ -181,7 +212,8 @@ function buildPlayerbar() {
     }
     paintLike();
     seek.set(engine.time(), engine.duration());
-    tDur.textContent = fmtTime(engine.duration());
+    lastSec = -1;
+    paintTime();
     document.title = t ? `${t.title} · ${t.artist} — MusicForge` : 'MusicForge';
   };
   const paintState = () => {
@@ -204,7 +236,12 @@ function buildPlayerbar() {
     const d = engine.duration();
     if (!seek.dragging) seek.set(t, d);
     const sec = Math.floor(t);
-    if (sec !== lastSec && !seek.dragging) { lastSec = sec; tCur.textContent = fmtTime(t); tDur.textContent = fmtTime(d); }
+    if (sec !== lastSec && !seek.dragging) {
+      lastSec = sec;
+      tCur.textContent = fmtTime(t);
+      tDur.textContent = state.settings.remainingTime && d ? `−${fmtTime(Math.max(0, d - t))}` : fmtTime(d);
+      tDur.title = state.settings.remainingTime ? 'Show total length' : 'Show remaining time';
+    }
   };
   on('track', paintTrack);
   on('state', paintState);
@@ -230,7 +267,15 @@ function buildPanel() {
   const tabL = h('button', { class: 'panel-tab', onclick: () => setPanel('lyrics') }, 'Lyrics');
   const body = h('div', { class: 'panel-body' });
   const lyr = h('div', { class: 'panel-body' });
-  panel.append(h('div', { class: 'panel-head' }, tabQ, tabL, h('span', { class: 'spacer' }), iconBtn('close', 'Close panel', () => setPanel(null), { class: 'small', size: 16 })), body, lyr);
+  const offText = h('span', { class: 'np-offset' }, offsetLabel());
+  const lyTools = h('div', { class: 'panel-tools' },
+    iconBtn('back', 'Show lyrics earlier ([)', () => nudgeOffset(-0.25), { class: 'small', size: 14 }), offText,
+    iconBtn('fwd', 'Show lyrics later (])', () => nudgeOffset(0.25), { class: 'small', size: 14 }),
+    h('span', { class: 'spacer' }),
+    h('button', { class: 'link-btn', onclick: () => engine.track && pickLyrics(engine.track).then((ok) => ok && lyricsView.load(engine.track, true)) }, 'Wrong lyrics?'),
+    iconBtn('copy', 'Copy lyrics', () => engine.track && copyLyrics(engine.track), { class: 'small', size: 15 }));
+  on('lyrics-offset', () => { offText.textContent = offsetLabel(); });
+  panel.append(h('div', { class: 'panel-head' }, tabQ, tabL, h('span', { class: 'spacer' }), iconBtn('close', 'Close panel', () => setPanel(null), { class: 'small', size: 16 })), lyTools, body, lyr);
   lyricsView = new LyricsView(lyr);
 
   const renderQueue = () => {
@@ -265,7 +310,12 @@ function buildPanel() {
     body.append(h('div', { class: 'q-label' }, 'Now playing'), item(q[engine.index] || q[0], Math.max(0, engine.index)));
     const upcoming = q.slice(engine.index + 1);
     if (upcoming.length) {
-      body.append(h('div', { class: 'q-label row' }, h('span', null, `Next up · ${upcoming.length}`), h('span', { class: 'spacer' }), h('button', { class: 'link-btn', onclick: () => engine.clearUpcoming() }, 'Clear')));
+      body.append(h('div', { class: 'q-label row' }, h('span', null, `Next up · ${upcoming.length}`), h('span', { class: 'spacer' }),
+        h('button', { class: 'link-btn', title: 'Save the whole queue as a playlist', onclick: async () => {
+          const name = await prompt({ title: 'Save queue as playlist', value: `Queue ${new Date().toLocaleDateString()}`, ok: 'Save' });
+          if (name) { const p = createPlaylist(name, engine.queue); toast(`Saved “${p.name}”`); }
+        } }, 'Save'),
+        h('button', { class: 'link-btn', onclick: () => engine.clearUpcoming() }, 'Clear')));
       upcoming.slice(0, 300).forEach((t, k) => body.append(item(t, engine.index + 1 + k)));
       if (upcoming.length > 300) body.append(h('p', { class: 'sidebar-empty' }, `…and ${upcoming.length - 300} more`));
     } else if (engine.repeat !== 'all') {
@@ -279,8 +329,9 @@ function buildPanel() {
     tabL.classList.toggle('on', panelTab === 'lyrics');
     body.hidden = panelTab !== 'queue';
     lyr.hidden = panelTab !== 'lyrics';
+    lyTools.hidden = panelTab !== 'lyrics';
     if (panelTab === 'queue') renderQueue();
-    if (panelTab === 'lyrics') { lyricsView.key = null; lyricsView.load(engine.track); } else lyricsView.stop();
+    if (panelTab === 'lyrics') lyricsView.load(engine.track, true); else lyricsView.stop();
     emit('panel', panelTab);
     window.dispatchEvent(new Event('resize'));
   };
@@ -326,8 +377,11 @@ function shortcuts() {
     else if (k === '/') { e.preventDefault(); document.getElementById('search-input').select(); }
     else if (k === 'l') togglePanel('lyrics');
     else if (k === 'q') togglePanel('queue');
-    else if (k === 'n') go('nowplaying');
-    else if (k === 'v') go('nowplaying', { vis: true });
+    else if (k === 'n') { const r = currentRoute(); if (r?.name === 'nowplaying') goBack(); else go('nowplaying'); }
+    else if (k === 'v') { const r = currentRoute(); go('nowplaying', { vis: !(r?.name === 'nowplaying' && r.params.vis) }, { replace: r?.name === 'nowplaying' }); }
+    else if (k === '[') nudgeOffset(-0.25);
+    else if (k === ']') nudgeOffset(0.25);
+    else if (k === '?') showShortcuts();
     else if (k === 'm') engine.toggleMute();
     else if (k === 's') engine.toggleShuffle();
     else if (k === 'r') engine.cycleRepeat();
@@ -335,3 +389,47 @@ function shortcuts() {
 }
 
 export function persistPanel() { save('settings'); }
+
+// ---------------------------------------------------------------- menus and dialogs
+function playlistMenu(p, e) {
+  menu([
+    { text: 'Play', icon: 'play', run: () => { if (engine.shuffle) engine.toggleShuffle(); engine.playList(p.tracks, 0, { type: 'playlist', id: p.id }); } },
+    { text: 'Shuffle play', icon: 'shuffle', run: () => { if (!engine.shuffle) engine.toggleShuffle(); engine.playList(p.tracks, Math.floor(Math.random() * p.tracks.length), { type: 'playlist', id: p.id }); } },
+    { text: 'Add to queue', icon: 'queue', run: () => engine.enqueue(p.tracks) },
+    '-',
+    { text: 'Rename', icon: 'settings', run: async () => { const n = await prompt({ title: 'Rename playlist', value: p.name }); if (n) renamePlaylist(p.id, n); } },
+    { text: 'Delete', icon: 'trash', run: async () => {
+      if (!(await confirm({ title: `Delete “${p.name}”?`, text: 'This removes the playlist from MusicForge. Songs and your accounts are not affected.', ok: 'Delete' }))) return;
+      deletePlaylist(p.id);
+      const r = currentRoute();
+      if (r?.name === 'playlist' && r.params.id === p.id) go('library', { tab: 'playlists' }, { replace: true });
+    } },
+  ], e.clientX, e.clientY);
+}
+
+function playerMenu(e) {
+  const r = e.currentTarget.getBoundingClientRect();
+  const s = state.settings;
+  menu([
+    { label: sleep.mode === 'time' ? `Sleep timer · ${Math.max(1, Math.ceil((sleep.until - Date.now()) / 60000))} min left` : sleep.mode === 'track' ? 'Sleep timer · end of this song' : 'Sleep timer' },
+    ...[15, 30, 45, 60, 90].map((m) => ({ text: `${m} minutes`, icon: 'moon', run: () => { setSleep(m); toast(`Pausing in ${m} minutes`); } })),
+    { text: 'End of this song', icon: 'moon', run: () => { setSleep('track'); toast('Stopping after this song'); } },
+    sleep.mode ? { text: 'Turn off sleep timer', icon: 'close', run: () => { setSleep(null); toast('Sleep timer off'); } } : null,
+    '-',
+    { text: s.notify ? 'Turn off song notifications' : 'Notify me when the song changes', icon: 'bell', run: () => { s.notify = !s.notify; save('settings'); toast(s.notify ? 'Song notifications on' : 'Song notifications off'); } },
+    { text: 'Keyboard shortcuts', icon: 'keyboard', run: showShortcuts },
+  ], r.left - 160, r.top);
+}
+
+const SHORTCUTS = [
+  ['Space', 'Play / pause'], ['Ctrl + → / ←', 'Next / previous song'], ['→ / ←', 'Seek 5 s (Shift: 15 s)'],
+  ['Ctrl + ↑ / ↓', 'Volume'], ['M', 'Mute'], ['S', 'Shuffle'], ['R', 'Repeat: off, all, one'],
+  ['L', 'Lyrics panel'], ['Q', 'Queue panel'], ['N', 'Now playing (again to go back)'], ['V', 'Visualizer only'],
+  ['[ / ]', 'Lyrics earlier / later'], ['Ctrl + K or /', 'Search'], ['Alt + ← / →', 'Back / forward'], ['F11', 'Full screen'], ['?', 'This list'],
+];
+export function showShortcuts() {
+  modal((close) => h('div', null,
+    h('div', { class: 'modal-body' }, h('h2', null, 'Keyboard shortcuts'),
+      h('div', { class: 'shortcut-grid' }, SHORTCUTS.map(([k, d]) => [h('kbd', null, k), h('span', null, d)]))),
+    h('div', { class: 'modal-actions' }, h('button', { class: 'btn primary', autofocus: true, onclick: () => close() }, 'Done'))));
+}

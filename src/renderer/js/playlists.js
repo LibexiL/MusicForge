@@ -60,6 +60,7 @@ export function movePlaylistTrack(id, from, to) {
   if (!p) return;
   const [t] = p.tracks.splice(from, 1);
   p.tracks.splice(to, 0, t);
+  p.updated = Date.now();
   save('playlists');
 }
 

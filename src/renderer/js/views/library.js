@@ -24,10 +24,12 @@ export function render({ tab } = {}) {
   const body = h('div');
   view.append(
     h('div', { class: 'view-head' }, h('h1', { class: 't-display' }, 'Library')),
-    h('div', { class: 'tabs', role: 'tablist' }, TABS.map((t) => h('button', {
-      class: `chip ${t.id === tab ? 'on' : ''}`, role: 'tab', 'aria-selected': t.id === tab,
-      onclick: () => go('library', { tab: t.id }, { replace: true }),
-    }, t.text))),
+    h('div', { class: 'tabs', role: 'tablist' }, TABS.map((t) => [
+      t.id === 'spotify' || t.id === 'folders' ? h('span', { class: 'tabs-sep', 'aria-hidden': 'true' }) : null,
+      h('button', {
+        class: `chip ${t.id === tab ? 'on' : ''}`, role: 'tab', 'aria-selected': t.id === tab,
+        onclick: () => go('library', { tab: t.id }, { replace: true }),
+      }, t.text)])),
     body);
   const offs = [];
   const draw = () => {

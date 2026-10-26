@@ -1,4 +1,4 @@
-import { h, icon, fmtNum } from '../util.js';
+import { h, icon, iconBtn, fmtNum } from '../util.js';
 import { state, connected, mf, refreshLibrary } from '../state.js';
 import { spotify, deezer } from '../services.js';
 import { engine } from '../player/engine.js';
@@ -6,8 +6,13 @@ import { go } from '../router.js';
 import { tile, trackList, loadingLine, emptyState } from '../ui/components.js';
 
 function section(title, action, body) {
+  // Horizontal rows get arrow buttons, since a mouse wheel scrolls the page, not the row.
+  const scroller = body?.classList?.contains('scroller') ? body : null;
+  const arrows = scroller ? h('div', { class: 'row-arrows' },
+    iconBtn('back', 'Scroll left', () => scroller.scrollBy({ left: -scroller.clientWidth * 0.8, behavior: 'smooth' }), { class: 'small', size: 16 }),
+    iconBtn('fwd', 'Scroll right', () => scroller.scrollBy({ left: scroller.clientWidth * 0.8, behavior: 'smooth' }), { class: 'small', size: 16 })) : null;
   return h('section', { class: 'section' },
-    h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, title), action || null),
+    h('div', { class: 'section-head' }, h('h2', { class: 't-sec' }, title), h('div', { class: 'row', style: { gap: '12px' } }, action || null, arrows)),
     body);
 }
 

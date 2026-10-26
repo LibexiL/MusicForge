@@ -170,7 +170,7 @@ export function render() {
       h('div', null,
         h('div', { class: 'svc-name' }, name, h('span', { class: `svc-status ${ok ? 'ok' : ''}` }, ok ? icon('check', 14) : null, status)),
         h('div', { class: 'svc-desc' }, desc)),
-      setup ? h('button', { class: `btn small ${!ok && !isOpen ? 'primary' : 'ghost'}`, 'aria-expanded': isOpen, onclick: toggle }, isOpen ? 'Close' : ok ? 'Manage' : 'Set up') : null);
+      setup ? h('button', { class: 'btn small ghost', 'aria-expanded': isOpen, onclick: toggle }, isOpen ? 'Close' : ok ? 'Manage' : 'Set up') : null);
     return h('div', { class: 'svc' }, row, isOpen && setup ? h('div', { class: 'svc-setup' }, setup()) : null);
   }
 

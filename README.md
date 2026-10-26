@@ -11,12 +11,13 @@
 - **Link your accounts** and browse or import your Spotify, YouTube and Apple Music playlists, liked songs and history.
 - **Mix sources in one playlist.** A MusicForge playlist can hold a Spotify song, a YouTube live version, a SoundCloud mix and a FLAC from your drive.
 - **Smart source picking.** Each song plays from the best source you have, in the order you choose (local file → Spotify → YouTube → SoundCloud → 30-second preview). If a Deezer chart song isn't playable, MusicForge finds the same song on Spotify or YouTube and remembers the match.
-- **Live synced lyrics** from LRCLIB, embedded tags or a `.lrc` file next to the song. Click a line to jump to it; nudge the timing if it's off.
+- **Live synced lyrics** from LRCLIB, embedded tags or a `.lrc` file next to the song. The current line stays centred; unsynced lyrics scroll along with the song. Click a line to jump to it, nudge the timing with `[` and `]`, and pick a different match with **Wrong lyrics?**.
 - **Audio visualizer** in four styles (bars, mirror, wave, radial) with cava-style falling peaks, in "temper" colours that run from tempered-steel blue to straw as the music gets louder. Works with Spotify and YouTube too by listening to system audio.
 - **Music videos.** Switch any song to its YouTube video at the same position, or pop the video into a corner while you browse.
 - **Stats.** Time listened per day, top artists and songs, which services you actually use, plus your Spotify top lists and Last.fm scrobbles.
 - **Artist watch.** Follow artists and track their Deezer fans and Last.fm listeners/plays over time with daily snapshots and trend lines.
 - **Scrobbling** to Last.fm from every source.
+- **Little things:** sleep timer (minutes or end of song), drag songs onto a sidebar playlist, drag to reorder playlists, save the queue as a playlist, click the song length to see time remaining, scroll on the volume, optional song-change notifications, and the window remembers its size and position.
 - **Desktop integration:** media keys, Windows media overlay, MPRIS on Linux (works with `playerctl`, KDE's media widget and conky now-playing scripts), tray icon, close-to-tray.
 
 | | |
@@ -71,7 +72,8 @@ The visualizer reads MusicForge's own audio directly (local files, previews). Sp
 | Ctrl+→ / Ctrl+← | Next / previous | → / ← | Seek 5 s (Shift: 15 s) |
 | Ctrl+↑ / Ctrl+↓ | Volume | M | Mute |
 | L | Lyrics panel | Q | Queue panel |
-| N | Now playing | V | Full-screen visualizer |
+| N | Now playing (again to go back) | V | Full-screen visualizer |
+| [ / ] | Lyrics earlier / later | ? | All shortcuts |
 | S | Shuffle | R | Repeat (off / all / one) |
 | Alt+← / Alt+→ | Back / forward | F11 | Full screen |
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog, session, desktopCapturer, Tray, Menu, nativeImage, globalShortcut, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, session, desktopCapturer, Tray, Menu, nativeImage, globalShortcut, clipboard, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -58,11 +58,11 @@ function boot() {
     // fullscreen + DRM for the embedded players.
     const ses = session.defaultSession;
     ses.setPermissionRequestHandler((wc, permission, cb, details) => {
-      if (permission === 'media' || permission === 'display-capture') return cb(ours(details.requestingUrl));
+      if (permission === 'media' || permission === 'display-capture' || permission === 'notifications') return cb(ours(details.requestingUrl));
       cb(['fullscreen', 'mediaKeySystem', 'clipboard-sanitized-write', 'speaker-selection'].includes(permission));
     });
     ses.setPermissionCheckHandler((wc, permission, origin) => {
-      if (permission === 'media') return ours(origin + '/');
+      if (permission === 'media' || permission === 'notifications') return ours(origin + '/');
       return ['fullscreen', 'mediaKeySystem', 'clipboard-sanitized-write', 'speaker-selection'].includes(permission);
     });
     ses.setDevicePermissionHandler(() => false);
@@ -76,10 +76,23 @@ function boot() {
       }
     });
 
+    // Restore the last window size/position if it still fits on a connected screen.
+    const savedBounds = () => {
+      const b = readBoot(userData).bounds;
+      if (!b || !b.width || !b.height) return { width: 1320, height: 840 };
+      const area = screen.getDisplayMatching(b).workArea;
+      const visible = b.x < area.x + area.width - 80 && b.x + b.width > area.x + 80 && b.y >= area.y - 20 && b.y < area.y + area.height - 80;
+      return visible ? { x: b.x, y: b.y, width: b.width, height: b.height } : { width: Math.min(b.width, area.width), height: Math.min(b.height, area.height) };
+    };
+    const saveBounds = () => {
+      if (!win || win.isDestroyed() || win.isFullScreen()) return;
+      writeBoot(userData, { bounds: { ...win.getNormalBounds(), maximized: win.isMaximized() } });
+    };
+
     const createWindow = () => {
       const native = !!bootCfg.nativeFrame;
       win = new BrowserWindow({
-        width: 1320, height: 840, minWidth: 940, minHeight: 600,
+        ...savedBounds(), minWidth: 940, minHeight: 600,
         show: false,
         backgroundColor: '#1b1e25',
         title: 'MusicForge',
@@ -98,8 +111,18 @@ function boot() {
         },
       });
       win.removeMenu();
-      win.once('ready-to-show', () => { if (!process.argv.includes('--hidden')) win.show(); });
+      win.once('ready-to-show', () => {
+        if (readBoot(userData).bounds?.maximized) win.maximize();
+        if (!process.argv.includes('--hidden')) win.show();
+      });
+      let boundsTimer = null;
+      const queueSave = () => { clearTimeout(boundsTimer); boundsTimer = setTimeout(saveBounds, 800); };
+      win.on('resize', queueSave);
+      win.on('move', queueSave);
+      win.on('maximize', queueSave);
+      win.on('unmaximize', queueSave);
       win.on('close', (e) => {
+        saveBounds();
         if (!quitting && store.get('settings')?.closeToTray && tray) { e.preventDefault(); win.hide(); }
       });
       win.on('closed', () => { win = null; });

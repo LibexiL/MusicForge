@@ -256,6 +256,18 @@ class Engine {
   }
 
   onEnded() {
+    if (this.stopAfterTrack) {
+      this.stopAfterTrack = false;
+      this.finishListen();
+      this.stopCurrent();
+      this.pending = 0;
+      // Line up the next song so Play continues from there.
+      if (this.index < this.queue.length - 1) { this.index++; this.track = this.queue[this.index]; this.emitQueue(); }
+      this.setState('paused');
+      emit('track', this);
+      emit('stopped-after-track');
+      return;
+    }
     if (this.repeat === 'one') { this.seek(0); this.cur?.play(); return; }
     this.next(true);
   }

@@ -1,5 +1,5 @@
 import { h, icon, iconBtn, fmtTime, img, clear, throttle } from '../util.js';
-import { state, on, emit, isLiked, toggleLike, mf } from '../state.js';
+import { state, on, emit, isLiked, toggleLike, mf, slim } from '../state.js';
 import { NAMES } from '../services.js';
 import { engine } from '../player/engine.js';
 import { go } from '../router.js';
@@ -174,6 +174,13 @@ export async function addToPlaylistFlow(tracks) {
   }
 }
 
+function goLocalAlbum(track) {
+  const t = state.library.tracks.find((x) => x.id === track.src.local);
+  if (!t) return;
+  const artist = t.albumArtist || t.artist || 'Unknown artist';
+  go('album', { kind: 'local', key: `${artist}\u0000${t.album || 'Unknown album'}` });
+}
+
 export function trackMenu(track, e, ctx = {}) {
   const items = [
     { text: 'Play now', icon: 'play', run: () => (ctx.list ? engine.playList(ctx.list, ctx.index, ctx.context) : engine.playOne(track)) },
@@ -186,7 +193,9 @@ export function trackMenu(track, e, ctx = {}) {
     '-',
     track.artist ? { text: `Artist stats: ${track.artist.split(',')[0]}`, icon: 'artist', run: () => go('artist', { name: track.artist.split(',')[0].trim(), dz: track.artistId?.startsWith('dz:') ? track.artistId.slice(3) : null }) } : null,
     { text: 'Watch music video', icon: 'video', run: () => { engine.playVideo(track); go('video'); } },
+    track.src?.local && track.album ? { text: `Go to album: ${track.album}`, icon: 'disc', run: () => goLocalAlbum(track) } : null,
     track.url ? { text: `Open in ${NAMES[track.origin] || 'browser'}`, icon: 'external', run: () => mf.invoke('shell:open', track.url) } : null,
+    track.url ? { text: 'Copy link', icon: 'copy', run: () => navigator.clipboard.writeText(track.url).then(() => toast('Link copied')) } : null,
     track.src?.local ? { text: 'Show in folder', icon: 'folder', run: () => mf.invoke('library:reveal', track.src.local) } : null,
   ];
   menu(items, e.clientX, e.clientY);
@@ -196,7 +205,7 @@ export function trackMenu(track, e, ctx = {}) {
 const ROW_H = 54;
 
 export function trackList(tracks, opts = {}) {
-  const { showAlbum = true, context = null, playlistId = null, onPlay, numbers = true } = opts;
+  const { showAlbum = true, context = null, playlistId = null, onPlay, numbers = true, reorder = null } = opts;
   const scroller = opts.scroller || document.getElementById('main');
   const root = h('div', { class: `tl ${showAlbum ? '' : 'no-album'}`, role: 'grid', 'aria-rowcount': tracks.length });
   const head = h('div', { class: 'tl-head', role: 'row' },
@@ -220,6 +229,25 @@ export function trackList(tracks, opts = {}) {
       onclick: (e) => { if (e.target.closest('button')) return; selected = i; root.querySelectorAll('.tl-row.sel').forEach((x) => x.classList.remove('sel')); r.classList.add('sel'); r.focus({ preventScroll: true }); },
       oncontextmenu: (e) => { e.preventDefault(); trackMenu(t, e, { list: tracks, index: i, context, playlistId }); },
       onkeydown: (e) => { if (e.key === 'Enter') play(i); },
+      draggable: true,
+      ondragstart: (e) => {
+        e.dataTransfer.effectAllowed = 'copyMove';
+        e.dataTransfer.setData('application/x-mf-tracks', JSON.stringify([slim(t)]));
+        e.dataTransfer.setData('text/plain', t.url || `${t.artist} - ${t.title}`);
+        if (reorder) e.dataTransfer.setData('application/x-mf-index', String(i));
+        r.classList.add('dragging');
+        document.body.classList.add('dragging-tracks');
+      },
+      ondragend: () => { r.classList.remove('dragging'); document.body.classList.remove('dragging-tracks'); },
+      ondragover: reorder ? (e) => { if (e.dataTransfer.types.includes('application/x-mf-index')) { e.preventDefault(); r.classList.add('drop-before'); } } : null,
+      ondragleave: reorder ? () => r.classList.remove('drop-before') : null,
+      ondrop: reorder ? (e) => {
+        r.classList.remove('drop-before');
+        const from = +e.dataTransfer.getData('application/x-mf-index');
+        if (Number.isNaN(from)) return;
+        e.preventDefault();
+        reorder(from, from < i ? i - 1 : i);
+      } : null,
     },
     h('div', { class: 'c-n' }, numbers ? h('span', { class: 'num' }, i + 1) : h('span', { class: 'num' }, ''), h('button', { title: 'Play', 'aria-label': `Play ${t.title}`, onclick: () => play(i) }, icon('play', 14))),
     h('div', { class: 'c-title' }, img(t.art), h('div', { class: 'tt' }, h('div', { class: 't', title: t.title }, t.title), h('div', { class: 'a' }, t.artist))),
