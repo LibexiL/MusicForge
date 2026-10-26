@@ -6,6 +6,8 @@ import { go } from '../router.js';
 import { toast, confirm } from '../ui/components.js';
 import { PALETTES, listInputDevices, startSystemCapture, stopSystemCapture, systemCaptureActive } from '../visualizer.js';
 import { resetAccent, accentFromArt, applyMotion } from '../theme.js';
+import { update, checkForUpdates } from '../ui/update.js';
+import { on } from '../state.js';
 
 const ACCENTS = ['#E9B949', '#E07A4F', '#D9577A', '#9C7CF0', '#5B8CF0', '#46B5A8', '#8CC152', '#ECE8E1'];
 
@@ -134,6 +136,36 @@ export function render() {
     row('Reset settings', null, h('button', { class: 'btn ghost', onclick: async () => {
       if (await confirm({ title: 'Reset settings?', text: 'Playback, visualizer and appearance settings go back to defaults.', ok: 'Reset' })) { state.settings = structuredClone(DEFAULT_SETTINGS); save('settings'); resetAccent(); go('settings', {}, { replace: true }); }
     } }, 'Reset')),
+  ));
+
+  // ---- Updates
+  const upText = h('span', { class: 't-meta', style: { textAlign: 'right' } });
+  const upBtn = h('button', { class: 'btn small ghost' });
+  const paintUpdate = (u = update.status) => {
+    if (!u) { upText.textContent = ''; upBtn.textContent = 'Check now'; upBtn.onclick = () => checkForUpdates(); return; }
+    const when = u.lastCheck ? ` Checked ${new Date(u.lastCheck).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.` : '';
+    const texts = {
+      idle: u.type === 'dev' ? 'Updates are off when running from source.' : 'Not checked yet.',
+      checking: 'Checking…',
+      none: `You’re up to date (${u.current}).${when}`,
+      downloading: `Downloading ${u.version}… ${u.percent || 0}%`,
+      ready: `Version ${u.version} is ready to install.`,
+      available: `Version ${u.version} is available.${u.mode === 'manual' ? ' This build can’t update itself, so download it from GitHub.' : ''}`,
+      error: u.error || 'Update check failed.',
+    };
+    upText.textContent = texts[u.state] || '';
+    upBtn.disabled = u.state === 'checking' || u.state === 'downloading' || u.type === 'dev';
+    if (u.state === 'ready') { upBtn.textContent = 'Restart to update'; upBtn.onclick = () => mf.invoke('update:install'); }
+    else if (u.state === 'available') { upBtn.textContent = 'Download'; upBtn.onclick = () => mf.invoke('update:install'); }
+    else { upBtn.textContent = 'Check now'; upBtn.onclick = () => checkForUpdates(); }
+  };
+  paintUpdate();
+  const offUpdate = on('update', (u) => { if (view.isConnected) paintUpdate(u); else offUpdate(); });
+  const autoDesc = { nsis: 'Downloads in the background and installs the next time MusicForge restarts.', appimage: 'Downloads in the background and swaps the AppImage on restart.', rpm: 'Downloads in the background; installing asks for your password once.', deb: 'Downloads in the background; installing asks for your password once.', portable: 'The portable build can’t replace itself; MusicForge tells you when a new version is out.' }[update.status?.type] || 'Checks GitHub for new versions every few hours.';
+
+  view.append(group('Updates',
+    row('Version', null, upText, upBtn),
+    row('Update automatically', autoDesc, toggle(() => s.autoUpdate !== false, (v) => { set('autoUpdate', v); setTimeout(() => mf.invoke('update:reschedule'), 800); }, 'Update automatically')),
   ));
 
   view.append(group('About',

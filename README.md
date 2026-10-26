@@ -88,14 +88,20 @@ npm run dist:linux   # AppImage + rpm + deb in dist/ (rpm needs rpmbuild)
 npm run dist:win     # NSIS installer + portable exe (run on Windows)
 ```
 
-### Releases
+### Releases and updates
 
-GitHub Actions builds Windows and Linux on every push. To publish a release with all installers attached:
+Releases are automatic. GitHub Actions publishes a new release with every installer attached whenever the version in `package.json` goes up on `main`:
 
 ```bash
-npm version patch        # or minor / major; updates package.json and makes a tag
-git push --follow-tags
+npm run release:patch    # 0.2.0 → 0.2.1, commits and pushes; the release follows in ~5 minutes
+npm run release:minor    # 0.2.0 → 0.3.0
 ```
+
+Or without a terminal: **Actions → Build & release → Run workflow**, pick patch, minor or major.
+
+Other pushes and pull requests build test installers you can download from the run's Artifacts.
+
+Installed copies update themselves: MusicForge checks GitHub a little after startup and every 4 hours, downloads new versions in the background, and shows **Restart to update** in the title bar. The Windows installer and AppImage install silently on restart; the .rpm and .deb install through your package manager and ask for your password once. The portable .exe can't replace itself, so it shows a download link instead. Turn this off in Settings → Updates.
 
 ### In-app Spotify (experimental)
 

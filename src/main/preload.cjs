@@ -10,8 +10,9 @@ const INVOKE = new Set([
   'api:request', 'api:image',
   'library:get', 'library:scan', 'library:addFolder', 'library:removeFolder', 'library:lyrics', 'library:reveal',
   'shell:open', 'data:export', 'data:import',
+  'update:status', 'update:check', 'update:install', 'update:reschedule',
 ]);
-const EVENTS = new Set(['library:progress', 'player:command', 'auth:changed']);
+const EVENTS = new Set(['library:progress', 'player:command', 'auth:changed', 'update:status']);
 
 contextBridge.exposeInMainWorld('mf', {
   invoke(channel, ...args) {

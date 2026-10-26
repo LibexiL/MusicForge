@@ -4,6 +4,7 @@ import { go } from './router.js';
 import { resetAccent, accentFromArt, applyMotion } from './theme.js';
 import { init as initShell } from './ui/shell.js';
 import { toast } from './ui/components.js';
+import './ui/update.js';
 import { startSystemCapture } from './visualizer.js';
 
 await loadState();

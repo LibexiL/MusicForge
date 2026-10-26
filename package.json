@@ -1,8 +1,8 @@
 {
   "name": "musicforge",
   "productName": "MusicForge",
-  "version": "0.1.0",
-  "description": "One player for Spotify, YouTube, SoundCloud, Deezer, Apple Music, Last.fm and your local files — with live lyrics, visualizers, videos and artist stats.",
+  "version": "0.2.0",
+  "description": "One player for Spotify, YouTube, SoundCloud, Deezer, Apple Music, Last.fm and your local files \u2014 with live lyrics, visualizers, videos and artist stats.",
   "main": "src/main/main.mjs",
   "desktopName": "musicforge.desktop",
   "homepage": "https://github.com/LibexiL/MusicForge",
@@ -21,9 +21,12 @@
     "dist": "electron-builder --publish never",
     "dist:linux": "electron-builder --linux --publish never",
     "dist:win": "electron-builder --win --publish never",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "release:patch": "npm version patch --no-git-tag-version && git commit -am \"Bump version\" && git push",
+    "release:minor": "npm version minor --no-git-tag-version && git commit -am \"Bump version\" && git push"
   },
   "dependencies": {
+    "electron-updater": "^6.8.11",
     "music-metadata": "^12.3.2"
   },
   "devDependencies": {
@@ -102,6 +105,13 @@
         "libsecret"
       ]
     },
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "LibexiL",
+        "repo": "MusicForge",
+        "releaseType": "draft"
+      }
+    ]
   }
 }

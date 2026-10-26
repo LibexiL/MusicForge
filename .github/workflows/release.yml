@@ -1,0 +1,141 @@
+name: Build & release
+
+# How releases happen (no manual tagging):
+#   - Raise "version" in package.json and push to main: builds and publishes vX.Y.Z automatically.
+#     (npm run release:patch does the bump, commit and push for you.)
+#   - Or: Actions tab -> "Build & release" -> Run workflow -> pick patch / minor / major.
+#     The workflow bumps the version, commits it, and publishes the release.
+# Every other push and pull request just builds and uploads test installers as run artifacts.
+# Installed copies of MusicForge pick up new releases through the built-in updater.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+      ref: ${{ steps.v.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump version (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version ${{ inputs.bump }} --no-git-tag-version
+          git commit -am "Release v$(node -p "require('./package.json').version")"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Decide whether this is a release
+        id: v
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          RELEASE=false
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ github.ref_name }}" = "main" ]; then
+            if ! git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then RELEASE=true; fi
+          fi
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+          echo "Version $VERSION, release: $RELEASE"
+
+      - name: Create draft release
+        if: steps.v.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=${{ steps.v.outputs.version }}
+          gh release delete "v$V" -R "${{ github.repository }}" --yes 2>/dev/null || true
+          gh release create "v$V" -R "${{ github.repository }}" --draft \
+            --target "${{ steps.v.outputs.ref }}" --title "MusicForge $V" --generate-notes
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win
+          - os: ubuntu-latest
+            target: --linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm libarchive-tools
+
+      - run: npm ci
+
+      - name: Build installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.target }} --publish ${{ needs.prepare.outputs.release == 'true' && 'always' || 'never' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MusicForge-${{ needs.prepare.outputs.version }}-${{ runner.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.rpm
+            dist/*.deb
+            dist/*.yml
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ needs.prepare.outputs.version }}" -R "${{ github.repository }}" --draft=false --latest
+
+  cleanup:
+    needs: [prepare, build]
+    if: failure() && needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove the unfinished draft so the next run can retry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "v${{ needs.prepare.outputs.version }}" -R "${{ github.repository }}" --yes || true

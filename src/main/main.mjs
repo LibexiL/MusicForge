@@ -8,6 +8,7 @@ import { startServer } from './server.mjs';
 import { Auth } from './auth.mjs';
 import { Api } from './api.mjs';
 import { Library } from './library.mjs';
+import { createUpdater } from './updater.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -237,6 +238,11 @@ function boot() {
     });
 
     createWindow();
+    const updater = createUpdater({ send, getSettings: () => store.get('settings') });
+    handle('update:status', () => updater.status());
+    handle('update:check', () => updater.check());
+    handle('update:install', () => updater.install());
+    handle('update:reschedule', () => updater.reschedule());
     const s = store.get('settings') || {};
     if (s.tray !== false) setupTray();
     applyMediaKeys(s.mediaKeys ?? process.platform === 'win32');

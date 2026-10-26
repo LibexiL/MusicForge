@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS = {
   reduceMotion: false,
   outputDevice: '',
   resolveWithYouTube: true,
+  autoUpdate: true,
 };
 
 export const state = {
